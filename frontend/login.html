@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Official access portal for NisargHunter AI" />
+  <title>NisargHunter AI — Access Portal</title>
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="icon" href="/static/logo-mark.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="brand-row">
+        <img class="brand-logo" src="/static/logo-mark.svg" alt="DNM logo" />
+        <div>
+          <div class="brand-pill">Official NisargHunter AI Portal</div>
+          <p class="brand-subtitle">Defensive intelligence. Premium workflow. Secure by design.</p>
+        </div>
+      </div>
+      <h1>Secure access for modern cyber operations</h1>
+      <p class="hero-copy">
+        Sign in to manage bug bounty programs, run asynchronous scans, and review AI-assisted findings in one polished workspace.
+      </p>
+
+      <div class="brand-showcase">
+        <div class="brand-frame">
+          <img class="brand-showcase-logo" src="/static/logo-mark.svg" alt="DNM logo mark" />
+        </div>
+        <div class="brand-showcase-copy">
+          <span class="brand-caption">Official mark</span>
+          <h3>Built to feel like a true product experience.</h3>
+          <p>
+            The logo is now the centerpiece: crisp, centered, and styled like a premium identity card instead of a pasted image.
+          </p>
+        </div>
+      </div>
+
+      <div class="hero-panel">
+        <div class="hero-metrics">
+          <div>
+            <strong>JWT</strong>
+            <span>Protected sessions</span>
+          </div>
+          <div>
+            <strong>FastAPI</strong>
+            <span>Async backend</span>
+          </div>
+          <div>
+            <strong>PostgreSQL</strong>
+            <span>Persistent storage</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="quote-grid">
+        <article class="quote-card">
+          <p>"Security is a process, not a product."</p>
+          <span>— Bruce Schneier</span>
+        </article>
+        <article class="quote-card">
+          <p>"The best defense is a well-instrumented system."</p>
+          <span>— NisargHunter AI</span>
+        </article>
+        <article class="quote-card">
+          <p>"Good code is its own security control."</p>
+          <span>— Engineering Principle</span>
+        </article>
+      </div>
+
+      <ul class="feature-list">
+        <li>JWT auth</li>
+        <li>Protected routes</li>
+        <li>Async architecture</li>
+        <li>Security-first UX</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div class="card-brand">
+          <img class="card-logo" src="/static/logo-mark.svg" alt="DNM logo" />
+          <div>
+            <p class="eyebrow">Welcome back</p>
+            <h2>Access your control room</h2>
+          </div>
+        </div>
+        <span class="live-pill">Live</span>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-mode="login">Login</button>
+        <button class="tab" data-mode="register">Register</button>
+      </div>
+
+      <form id="auth-form" class="form">
+        <label class="field field-hidden" id="username-field">
+          <span>Username</span>
+          <input id="username" type="text" placeholder="hunter_one" minlength="3" maxlength="150" />
+        </label>
+
+        <label class="field">
+          <span>Email</span>
+          <input id="email" type="email" placeholder="you@example.com" required />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input id="password" type="password" placeholder="Minimum 8 characters" minlength="8" required />
+        </label>
+
+        <button id="submit-btn" type="submit" class="primary">Login</button>
+      </form>
+
+      <div class="status-row">
+        <span id="status" class="status">Ready</span>
+        <button id="check-me" class="ghost" type="button">Check current user</button>
+      </div>
+
+      <pre id="output" class="output">No response yet.</pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

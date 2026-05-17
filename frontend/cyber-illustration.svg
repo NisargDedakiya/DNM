@@ -1,0 +1,69 @@
+<svg width="800" height="620" viewBox="0 0 800 620" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="120" y1="80" x2="680" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="220" y1="220" x2="580" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <filter id="blur" x="0" y="0" width="800" height="620" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="620" rx="36" fill="#070B14"/>
+  <g opacity="0.35" stroke="#93C5FD">
+    <path d="M70 130H730"/>
+    <path d="M70 220H730"/>
+    <path d="M70 310H730"/>
+    <path d="M70 400H730"/>
+    <path d="M70 490H730"/>
+    <path d="M120 60V560"/>
+    <path d="M240 60V560"/>
+    <path d="M360 60V560"/>
+    <path d="M480 60V560"/>
+    <path d="M600 60V560"/>
+    <path d="M720 60V560"/>
+  </g>
+
+  <circle cx="158" cy="110" r="58" fill="#7C3AED" filter="url(#blur)" opacity="0.45"/>
+  <circle cx="630" cy="520" r="86" fill="#22C55E" filter="url(#blur)" opacity="0.28"/>
+
+  <g transform="translate(120 88)">
+    <rect x="42" y="98" width="410" height="248" rx="28" fill="url(#g1)" opacity="0.9"/>
+    <rect x="62" y="118" width="370" height="208" rx="22" fill="#0B1020" stroke="rgba(255,255,255,0.14)"/>
+
+    <g transform="translate(124 140)">
+      <path d="M130 6L184 28V84C184 140 148 184 96 206C44 184 8 140 8 84V28L62 6C86 -2 110 -2 130 6Z" fill="url(#g2)"/>
+      <path d="M96 68C81 68 69 80 69 95V126H123V95C123 80 111 68 96 68Z" fill="#08101F"/>
+      <path d="M72 95H120" stroke="#08101F" stroke-width="14" stroke-linecap="round"/>
+      <circle cx="96" cy="118" r="13" fill="#08101F"/>
+      <circle cx="96" cy="118" r="5" fill="#E2E8F0"/>
+    </g>
+
+    <g opacity="0.85">
+      <circle cx="478" cy="154" r="14" fill="#22C55E"/>
+      <circle cx="478" cy="198" r="14" fill="#7C3AED"/>
+      <circle cx="478" cy="242" r="14" fill="#38BDF8"/>
+      <path d="M478 154L478 242" stroke="rgba(255,255,255,0.22)" stroke-width="3" stroke-dasharray="6 8"/>
+    </g>
+
+    <rect x="76" y="302" width="336" height="18" rx="9" fill="rgba(255,255,255,0.08)"/>
+    <rect x="76" y="302" width="210" height="18" rx="9" fill="#7C3AED"/>
+  </g>
+
+  <g transform="translate(520 96)">
+    <rect x="0" y="0" width="180" height="114" rx="24" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="24" y="40" fill="#E2E8F0" font-family="Inter,Arial,sans-serif" font-size="20" font-weight="700">Threat intel</text>
+    <text x="24" y="72" fill="#A5B4FC" font-family="Inter,Arial,sans-serif" font-size="15">Monitoring 24/7</text>
+    <text x="24" y="96" fill="#22C55E" font-family="Inter,Arial,sans-serif" font-size="14">All systems nominal</text>
+  </g>
+
+  <g transform="translate(550 392)">
+    <rect x="0" y="0" width="166" height="88" rx="22" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="22" y="36" fill="#E2E8F0" font-family="Inter,Arial,sans-serif" font-size="18" font-weight="700">Zero trust</text>
+    <text x="22" y="61" fill="#A5B4FC" font-family="Inter,Arial,sans-serif" font-size="14">Built for secure access</text>
+  </g>
+</svg>
