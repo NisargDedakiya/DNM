@@ -1,17 +1,87 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Badge, Button } from '../../components/ui/components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getFindings, triageFinding } from '../../api/clients/findings';
+import { getPrograms } from '../../api/clients/programs';
 
-const findingsData = [
-  { id: 'VULN-001', title: 'SQL Injection in Login Form', target: 'api.example.com', severity: 'critical', date: '2026-05-15', aiConfidence: 98 },
-  { id: 'VULN-002', title: 'Exposed AWS Keys in JS File', target: 'dev.example.com', severity: 'high', date: '2026-05-15', aiConfidence: 95 },
-  { id: 'VULN-003', title: 'Stored XSS in User Profile', target: 'app.example.com', severity: 'medium', date: '2026-05-14', aiConfidence: 85 },
-  { id: 'VULN-004', title: 'Missing Security Headers', target: 'example.com', severity: 'low', date: '2026-05-14', aiConfidence: 99 },
-  { id: 'VULN-005', title: 'Open Directory Listing', target: 'assets.example.com', severity: 'info', date: '2026-05-13', aiConfidence: 92 },
-];
+interface Program {
+  id: string
+  name: string
+}
+
+interface Finding {
+  id: string
+  title: string
+  description?: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  status: string
+  endpoint?: string
+  evidence?: string
+  program_id: string
+  created_at: string
+}
 
 const FindingsPage: React.FC = () => {
-  const [selectedFinding, setSelectedFinding] = useState<any | null>(null);
+  const [programs, setPrograms] = useState<Program[]>([])
+  const [selectedProgram, setSelectedProgram] = useState<string | null>(null)
+  const [findings, setFindings] = useState<Finding[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
+  const [triageLoading, setTriageLoading] = useState(false)
+
+  useEffect(() => {
+    loadPrograms()
+  }, [])
+
+  useEffect(() => {
+    if (selectedProgram) {
+      loadFindings()
+    }
+  }, [selectedProgram])
+
+  const loadPrograms = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getPrograms()
+      setPrograms(data || [])
+      if (data && data.length > 0) {
+        setSelectedProgram(data[0].id)
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to load programs')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadFindings = async () => {
+    if (!selectedProgram) return
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getFindings(selectedProgram)
+      setFindings(data || [])
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to load findings')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTriage = async () => {
+    if (!selectedFinding) return
+    try {
+      setTriageLoading(true)
+      const result = await triageFinding(selectedFinding.id)
+      console.log('Triage result:', result)
+    } catch (err: any) {
+      console.error('Triage error:', err)
+    } finally {
+      setTriageLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6 relative h-[calc(100vh-8rem)] flex flex-col">
@@ -21,9 +91,9 @@ const FindingsPage: React.FC = () => {
           <p className="text-gray-400 text-sm">Review, triage, and export AI-verified vulnerabilities.</p>
         </div>
         <div className="flex space-x-3">
-          <Button variant="outline" className="px-4 py-2">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-            Filters
+          <Button variant="outline" className="px-4 py-2" onClick={loadFindings}>
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            Refresh
           </Button>
           <Button variant="primary" className="px-4 py-2">
             Export Report
@@ -32,51 +102,76 @@ const FindingsPage: React.FC = () => {
       </div>
 
       <Card className="flex-1 flex flex-col min-h-0 p-0 overflow-hidden">
-        <div className="overflow-auto flex-1 custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-white/5 border-b border-white/10 sticky top-0 z-10 backdrop-blur-md">
-              <tr>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">ID</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">Vulnerability</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">Target</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">Severity</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">AI Confidence</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">Date</th>
-                <th className="py-4 px-6 text-sm font-semibold text-gray-300">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {findingsData.map((finding) => (
-                <tr 
-                  key={finding.id} 
-                  className={`hover:bg-white/5 transition-colors cursor-pointer ${selectedFinding?.id === finding.id ? 'bg-primary/5' : ''}`}
-                  onClick={() => setSelectedFinding(finding)}
-                >
-                  <td className="py-4 px-6 font-mono text-sm text-gray-400">{finding.id}</td>
-                  <td className="py-4 px-6 text-sm font-medium text-white">{finding.title}</td>
-                  <td className="py-4 px-6 font-mono text-sm text-primary hover:underline">{finding.target}</td>
-                  <td className="py-4 px-6">
-                    <Badge variant={finding.severity as any} className="uppercase tracking-wider">{finding.severity}</Badge>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-secondary rounded-full" style={{ width: `${finding.aiConfidence}%` }}></div>
-                      </div>
-                      <span className="text-xs text-secondary">{finding.aiConfidence}%</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-400">{finding.date}</td>
-                  <td className="py-4 px-6">
-                    <button className="text-gray-400 hover:text-white transition-colors p-1">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                    </button>
-                  </td>
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/20 animate-pulse mb-4">
+                <svg className="w-6 h-6 text-primary animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <p className="text-gray-400">Loading findings...</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-gray-400">{error}</p>
+              <Button variant="primary" onClick={loadFindings} className="mt-4">Try Again</Button>
+            </div>
+          </div>
+        ) : findings.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <svg className="w-12 h-12 text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-gray-400">No findings yet. Start a scan to discover vulnerabilities.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-auto flex-1 custom-scrollbar">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-white/5 border-b border-white/10 sticky top-0 z-10 backdrop-blur-md">
+                <tr>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">ID</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Title</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Endpoint</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Severity</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Status</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Date</th>
+                  <th className="py-4 px-6 text-sm font-semibold text-gray-300">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {findings.map((finding) => (
+                  <tr 
+                    key={finding.id} 
+                    className={`hover:bg-white/5 transition-colors cursor-pointer ${selectedFinding?.id === finding.id ? 'bg-primary/5' : ''}`}
+                    onClick={() => setSelectedFinding(finding)}
+                  >
+                    <td className="py-4 px-6 font-mono text-sm text-gray-400">{finding.id.substring(0, 8)}</td>
+                    <td className="py-4 px-6 text-sm font-medium text-white">{finding.title}</td>
+                    <td className="py-4 px-6 font-mono text-sm text-primary hover:underline">{finding.endpoint || '-'}</td>
+                    <td className="py-4 px-6">
+                      <Badge variant={finding.severity as any} className="uppercase tracking-wider">{finding.severity}</Badge>
+                    </td>
+                    <td className="py-4 px-6 text-xs text-gray-400">{finding.status}</td>
+                    <td className="py-4 px-6 text-sm text-gray-400">{new Date(finding.created_at).toLocaleDateString()}</td>
+                    <td className="py-4 px-6">
+                      <button className="text-gray-400 hover:text-white transition-colors p-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* AI Analysis Drawer */}
@@ -93,7 +188,7 @@ const FindingsPage: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-3 mb-2">
                   <Badge variant={selectedFinding.severity as any} className="uppercase">{selectedFinding.severity}</Badge>
-                  <span className="font-mono text-sm text-gray-400">{selectedFinding.id}</span>
+                  <span className="font-mono text-sm text-gray-400">{selectedFinding.id.substring(0, 8)}</span>
                 </div>
                 <h2 className="text-xl font-bold text-white">{selectedFinding.title}</h2>
               </div>
@@ -107,43 +202,35 @@ const FindingsPage: React.FC = () => {
 
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar space-y-6">
               <div>
-                <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
-                  <svg className="w-4 h-4 mr-2 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  AI Analysis & Triage
-                </h3>
-                <div className="bg-secondary/10 border border-secondary/30 rounded-lg p-4 text-sm text-gray-300 leading-relaxed shadow-[0_0_15px_rgba(157,77,255,0.1)]">
-                  <p>The AI model confirms this vulnerability with {selectedFinding.aiConfidence}% confidence. The payload <code className="bg-black/30 px-1 py-0.5 rounded text-secondary">' OR '1'='1</code> successfully bypassed authentication on the <code>{selectedFinding.target}</code> endpoint.</p>
-                  <p className="mt-2"><strong>Recommendation:</strong> Implement parameterized queries using prepared statements immediately.</p>
-                </div>
+                <h3 className="text-sm font-semibold text-gray-300 mb-2">Description</h3>
+                <p className="text-sm text-gray-400">{selectedFinding.description || 'No description available'}</p>
               </div>
 
-              <div>
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Evidence / HTTP Request</h3>
-                <div className="bg-[#0B1020] border border-white/10 rounded-lg p-4 overflow-x-auto font-mono text-xs text-gray-400">
-                  <pre>
-<span className="text-blue-400">POST</span> /api/v1/login <span className="text-purple-400">HTTP/1.1</span><br/>
-Host: {selectedFinding.target}<br/>
-Content-Type: application/json<br/>
-<br/>
-{"{"}<br/>
-  "username": <span className="text-red-400">"admin' OR '1'='1"</span>,<br/>
-  "password": "any"<br/>
-{"}"}
-                  </pre>
+              {selectedFinding.evidence && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-300 mb-2">Evidence</h3>
+                  <div className="bg-[#0B1020] border border-white/10 rounded-lg p-4 overflow-x-auto font-mono text-xs text-gray-400 max-h-[200px]">
+                    <pre>{selectedFinding.evidence}</pre>
+                  </div>
                 </div>
-              </div>
+              )}
               
               <div>
-                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Markdown Report Preview</h3>
-                 <div className="bg-white/5 border border-white/10 rounded-lg p-4 text-sm text-gray-300 prose prose-invert max-w-none">
-                    <h4>Description</h4>
-                    <p>A SQL Injection vulnerability was discovered...</p>
-                 </div>
+                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Status</h3>
+                 <p className="text-sm text-gray-400">{selectedFinding.status}</p>
               </div>
             </div>
             
-            <div className="p-6 border-t border-white/10 bg-background-card/80">
-              <Button variant="primary" className="w-full">Generate Complete Report</Button>
+            <div className="p-6 border-t border-white/10 bg-background-card/80 flex space-x-2">
+              <Button 
+                variant="primary" 
+                className="flex-1"
+                onClick={handleTriage}
+                disabled={triageLoading}
+              >
+                {triageLoading ? 'Processing...' : 'Triage with AI'}
+              </Button>
+              <Button variant="outline" className="flex-1">Export</Button>
             </div>
           </motion.div>
         )}

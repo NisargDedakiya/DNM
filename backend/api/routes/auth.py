@@ -25,12 +25,29 @@ async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
     svc = AuthService(db)
-    token = await svc.authenticate_user(email=payload.email, password=payload.password)
+    token = await svc.authenticate_user(username=payload.username, password=payload.password)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    return TokenResponse(access_token=token, expires_in=8 * 3600)
+    user = await svc.get_by_username(payload.username)
+    return TokenResponse(access_token=token, expires_in=8 * 3600, user=UserResponse.from_orm(user))
 
 
 @router.get("/me", response_model=UserResponse)
 async def me(current_user=Depends(get_current_user)):
     return UserResponse.from_orm(current_user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(current_user=Depends(get_current_user)):
+    # For now, return a new token for the current user
+    # In a full implementation, this should validate an HttpOnly refresh cookie
+    from backend.auth.jwt_handler import create_access_token
+    from datetime import timedelta
+    token = create_access_token(subject=str(current_user.id), expires_delta=timedelta(hours=8))
+    return TokenResponse(access_token=token, expires_in=8 * 3600, user=UserResponse.from_orm(current_user))
+
+
+@router.post("/logout")
+async def logout():
+    # In a full implementation, this would clear the HttpOnly refresh cookie
+    return {"message": "Logged out successfully"}

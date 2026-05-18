@@ -9,6 +9,9 @@ from backend.models.program import Program
 from backend.models.report import Report
 from backend.models.scan import Scan, ScanStatus, ScanType
 from backend.models.user import User
+from backend.models.asset import Asset
+from backend.models.endpoint import Endpoint
+from backend.models.technology import Technology
 from backend.models.organization import Organization
 from backend.models.team_member import TeamMember, MemberRole
 from backend.models.monitoring_rule import MonitoringRule, MonitoringFrequency
@@ -26,6 +29,24 @@ from backend.models.graph_node import GraphNode, NodeType
 from backend.models.graph_edge import GraphEdge, RelationshipType
 from backend.models.executive_report import ExecutiveReport, ExecutiveReportType
 from backend.models.platform_program import PlatformProgram, PlatformName
+from backend.models.hackerone_program import HackerOneProgram
+from backend.models.hackerone_report import HackerOneReport
+from backend.models.bugcrowd_program import (
+	BugcrowdProgram,
+	BugcrowdAsset,
+	BugcrowdSyncHistory,
+	BugcrowdProgramStatus,
+	BugcrowdAssetType,
+)
+from backend.models.triage_result import TriageResult
+from backend.models.report_draft import ReportDraft
+from backend.models.notification import (
+	Notification,
+	NotificationType,
+	NotificationChannel,
+	NotificationSeverity,
+	NotificationStatus,
+)
 
 __all__ = [
 	"Base",
@@ -33,6 +54,9 @@ __all__ = [
 	"TimestampMixin",
 	"UUIDMixin",
 	"User",
+	"Asset",
+	"Endpoint",
+	"Technology",
 	"Program",
 	"Scan",
 	"ScanType",
@@ -67,4 +91,18 @@ __all__ = [
 	"ExecutiveReportType",
 	"PlatformProgram",
 	"PlatformName",
+	"HackerOneProgram",
+	"HackerOneReport",
+	"BugcrowdProgram",
+	"BugcrowdAsset",
+	"BugcrowdSyncHistory",
+	"BugcrowdProgramStatus",
+	"BugcrowdAssetType",
+	"TriageResult",
+	"ReportDraft",
+	"Notification",
+	"NotificationType",
+	"NotificationChannel",
+	"NotificationSeverity",
+	"NotificationStatus",
 ]

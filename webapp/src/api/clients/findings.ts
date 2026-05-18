@@ -13,22 +13,37 @@ export interface Finding {
   created_at: string
 }
 
-export async function getFindings(params?: { program_id?: string; severity?: string; status?: string }) {
-  const r = await api.get('/findings/', { params })
-  return r.data as Finding[]
+export async function getFindings(program_id: string, params?: { severity?: string; status?: string }) {
+  const r = await api.get('/findings', { params: { program_id, ...params } })
+  return r.data?.findings || r.data || []
 }
 
-export async function getFinding(id: string) {
-  const r = await api.get(`/findings/${id}`)
+export async function createFinding(data: {
+  program_id: string
+  title: string
+  description: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  endpoint?: string
+  evidence?: string
+}) {
+  const r = await api.post('/findings', data)
   return r.data as Finding
 }
 
-export async function triageFinding(finding_id: string) {
-  const r = await api.post('/ai/triage', { finding_id })
-  return r.data
+export async function updateFinding(
+  id: string,
+  data: {
+    title?: string
+    severity?: string
+    description?: string
+    status?: string
+  }
+) {
+  const r = await api.put(`/findings/${id}`, data)
+  return r.data as Finding
 }
 
-export async function generateReport(finding_ids: string[]) {
-  const r = await api.post('/ai/report', { finding_ids })
+export async function triageFinding(id: string) {
+  const r = await api.post(`/findings/${id}/triage`)
   return r.data
 }

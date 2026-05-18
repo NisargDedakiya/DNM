@@ -37,8 +37,8 @@ class AuthService:
         await self.db.refresh(user)
         return user
 
-    async def authenticate_user(self, email: str, password: str) -> Optional[str]:
-        user = await self.get_by_email(email)
+    async def authenticate_user(self, username: str, password: str) -> Optional[str]:
+        user = await self.get_by_username(username)
         if not user:
             return None
         if not verify_password(password, user.hashed_password):

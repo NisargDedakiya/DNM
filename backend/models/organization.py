@@ -77,6 +77,13 @@ class Organization(BaseModel):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    
+    bugcrowd_programs = relationship(
+        "BugcrowdProgram",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         Index("idx_organization_owner_slug", "owner_id", "slug"),

@@ -16,6 +16,8 @@ from fastapi import HTTPException, status
 from backend.models.alert import Alert, AlertType, AlertSeverity
 from backend.models.monitoring_rule import MonitoringRule
 from backend.models.scan import Scan
+from backend.services.alert_router_service import AlertRouterService
+from backend.services.notification_service import NotificationService
 
 
 class AlertService:
@@ -27,6 +29,16 @@ class AlertService:
 
     # Deduplication window: 1 hour
     DEDUP_WINDOW_SECONDS = 3600
+
+    ALERT_TO_NOTIFICATION_TYPE = {
+        AlertType.NEW_FINDING: "new_finding",
+        AlertType.NEW_ASSET: "monitoring_alert",
+        AlertType.NEW_ENDPOINT: "scope_change",
+        AlertType.ASSET_REMOVED: "scope_change",
+        AlertType.FINDING_UPDATED: "risk_escalation",
+        AlertType.SCAN_COMPLETED: "monitoring_alert",
+        AlertType.SCAN_FAILED: "monitoring_alert",
+    }
 
     async def create_alert(
         self,
@@ -89,6 +101,32 @@ class AlertService:
         self.db.add(alert)
         await self.db.commit()
         await self.db.refresh(alert)
+
+        # Best-effort notification fanout; never break alert creation path.
+        try:
+            notification_service = NotificationService(self.db)
+            router = AlertRouterService(notification_service)
+            notification_type = self.ALERT_TO_NOTIFICATION_TYPE.get(
+                AlertType(alert_type),
+                "monitoring_alert",
+            )
+            await router.route_alert(
+                organization_id=organization_id,
+                notification_type=notification_type,
+                severity=str(severity),
+                title=title,
+                message=description,
+                metadata={
+                    "alert_id": str(alert.id),
+                    "program_id": str(program_id),
+                    "monitoring_rule_id": str(monitoring_rule_id) if monitoring_rule_id else None,
+                    "scan_id": str(scan_id) if scan_id else None,
+                },
+            )
+        except Exception:
+            # Keep alert creation resilient if notification transport fails.
+            pass
+
         return alert
 
     async def _find_duplicate_alert(

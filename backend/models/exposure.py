@@ -58,19 +58,18 @@ class Exposure(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "exposure"
 
-    # Foreign keys
     asset_id: Mapped[UUID] = mapped_column(
-        ForeignKey("asset.id", ondelete="CASCADE"),
+        ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organization.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     finding_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("finding.id", ondelete="SET NULL"),
+        ForeignKey("findings.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -185,12 +184,12 @@ class ExposureHistory(Base, UUIDMixin, TimestampMixin):
         index=True,
     )
     asset_id: Mapped[UUID] = mapped_column(
-        ForeignKey("asset.id", ondelete="CASCADE"),
+        ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organization.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -221,13 +220,13 @@ class AssetFingerprint(Base, UUIDMixin, TimestampMixin):
 
     # Foreign keys
     asset_id: Mapped[UUID] = mapped_column(
-        ForeignKey("asset.id", ondelete="CASCADE"),
+        ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
     )
     organization_id: Mapped[UUID] = mapped_column(
-        ForeignKey("organization.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

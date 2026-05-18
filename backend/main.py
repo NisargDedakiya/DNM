@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -31,6 +31,8 @@ from backend.api.routes import graph as graph_routes
 from backend.api.routes import executive as executive_routes
 from backend.api.routes import copilot as copilot_routes
 from backend.api.routes import integrations as integrations_routes
+from backend.api.routes import notifications as notifications_routes
+from backend.api.routes import hackerone as hackerone_routes
 
 logger = logging.getLogger(__name__)
 
@@ -90,27 +92,33 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.mount("/static", StaticFiles(directory="frontend"), name="static")
+    # app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
-    # Register routers
-    app.include_router(health.router)
-    app.include_router(auth_routes.router)
-    app.include_router(organizations_routes.router)
-    app.include_router(programs_routes.router)
-    app.include_router(monitoring_routes.router)
-    app.include_router(exposure_routes.router)
-    app.include_router(scans_routes.router)
-    app.include_router(findings_routes.router)
-    app.include_router(assets_routes.router)
-    app.include_router(dashboard_routes.router)
-    app.include_router(recon_ai_routes.router)
-    app.include_router(websocket_routes.router)
-    app.include_router(timeline_routes.router)
-    app.include_router(graph_routes.router)
-    app.include_router(executive_routes.router)
-    app.include_router(copilot_routes.router)
-    app.include_router(integrations_routes.router)
-    app.include_router(web_routes.router)
+    api_router = APIRouter(prefix="/api")
+    
+    # Register routers under /api
+    api_router.include_router(health.router)
+    api_router.include_router(auth_routes.router)
+    api_router.include_router(organizations_routes.router)
+    api_router.include_router(programs_routes.router)
+    api_router.include_router(monitoring_routes.router)
+    api_router.include_router(exposure_routes.router)
+    api_router.include_router(scans_routes.router)
+    api_router.include_router(findings_routes.router)
+    api_router.include_router(assets_routes.router)
+    api_router.include_router(dashboard_routes.router)
+    api_router.include_router(recon_ai_routes.router)
+    api_router.include_router(websocket_routes.router)
+    api_router.include_router(timeline_routes.router)
+    api_router.include_router(graph_routes.router)
+    api_router.include_router(executive_routes.router)
+    api_router.include_router(copilot_routes.router)
+    api_router.include_router(integrations_routes.router)
+    api_router.include_router(notifications_routes.router)
+    api_router.include_router(hackerone_routes.router)
+    api_router.include_router(web_routes.router)
+    
+    app.include_router(api_router)
 
     return app
 

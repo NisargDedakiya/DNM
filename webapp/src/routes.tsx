@@ -9,6 +9,7 @@ import FindingsPage from './pages/findings/FindingsPage';
 import AssetsPage from './pages/assets/AssetsPage';
 import CopilotPage from './pages/copilot/CopilotPage';
 import IntegrationsPage from './pages/integrations/IntegrationsPage';
+import OrganizationsPage from './pages/organizations/OrganizationsPage';
 import MainLayout from './components/layout/MainLayout';
 import useAuthStore from './stores/authStore';
 
@@ -41,6 +42,7 @@ const AppRoutes: React.FC = () => {
         <Route path="assets" element={<AssetsPage />} />
         <Route path="copilot" element={<CopilotPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
+        <Route path="organizations" element={<OrganizationsPage />} />
       </Route>
       
       {/* Fallback */}

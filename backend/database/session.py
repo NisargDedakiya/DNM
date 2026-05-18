@@ -14,17 +14,22 @@ from backend.core.config import settings
 
 # Create async SQLAlchemy engine
 # Uses asyncpg for PostgreSQL connections
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
-    future=True,
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=10,
-    connect_args={
-        "timeout": 30,
-    },
-)
+engine_kwargs = {
+    "echo": settings.debug,
+    "future": True,
+}
+if settings.database_url.startswith("sqlite"):
+    from sqlalchemy.pool import NullPool
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs.update({
+        "pool_pre_ping": True,
+        "pool_size": 20,
+        "max_overflow": 10,
+        "connect_args": {"timeout": 30}
+    })
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(
@@ -63,6 +68,7 @@ async def init_db() -> None:
     """
     async with engine.begin() as conn:
         from backend.database.base import Base
+        import backend.models  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
 

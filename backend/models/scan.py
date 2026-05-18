@@ -75,7 +75,4 @@ class Scan(BaseModel):
         passive_deletes=True,
     )
 
-    __table_args__ = (
-        Index("ix_scans_status", "status"),
-        Index("ix_scans_organization", "organization_id"),
-    )
+
