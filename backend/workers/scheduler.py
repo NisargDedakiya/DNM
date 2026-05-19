@@ -10,7 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.database.session import get_db
+from backend.database.session import AsyncSessionLocal, get_db
 from backend.services.monitoring_service import MonitoringService
 from backend.services.recon_pipeline_service import ReconPipelineService
 from backend.services.delta_service import DeltaService
@@ -36,7 +36,8 @@ async def execute_monitoring_scheduler(
         dict: Execution summary
     """
     if db is None:
-        db = get_db()
+        async with AsyncSessionLocal() as session:
+            return await execute_monitoring_scheduler(session)
 
     monitoring_service = MonitoringService(db)
     recon_service = ReconPipelineService(db)
@@ -175,8 +176,14 @@ async def process_monitoring_scan_completion(
         dict: Processing summary
     """
     if db is None:
-        from backend.database.session import get_db
-        db = await get_db()
+        async with AsyncSessionLocal() as session:
+            return await process_monitoring_scan_completion(
+                scan_id=scan_id,
+                program_id=program_id,
+                organization_id=organization_id,
+                monitoring_rule_id=monitoring_rule_id,
+                db=session,
+            )
 
     delta_service = DeltaService(db)
     alert_service = AlertService(db)

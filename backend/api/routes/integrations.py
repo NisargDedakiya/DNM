@@ -206,6 +206,8 @@ async def ingest_bugcrowd_engagement(
             "message": f"Successfully imported {result.assets_imported} assets from {result.program_name}"
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error ingesting Bugcrowd engagement: {str(e)}", exc_info=True)
         raise HTTPException(

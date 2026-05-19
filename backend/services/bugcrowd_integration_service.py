@@ -5,18 +5,16 @@ Orchestrates scraping, extraction, and ingestion workflow
 import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime
-import asyncio
 
 from backend.engines.bugcrowd_scraper import BugcrowdScraper, BugcrowdScraperConfig
 from backend.services.scope_extraction_service import ScopeExtractor
 from backend.services.program_metadata_service import ProgramMetadataAnalyzer, ProgramMetadata
 from backend.models.bugcrowd_program import BugcrowdProgram, BugcrowdAsset, BugcrowdProgramStatus, BugcrowdSyncHistory
-from backend.database.session import get_db
 from backend.ai.claude_client import ClaudeClient
 from backend.core.scope_validator import ScopeValidator
 from backend.models.asset import Asset
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,7 @@ class BugcrowdIntegrationService:
         self,
         claude_client: ClaudeClient,
         scope_validator: ScopeValidator,
-        db: Session
+        db: AsyncSession
     ):
         self.claude = claude_client
         self.validator = scope_validator
@@ -169,9 +167,10 @@ class BugcrowdIntegrationService:
         """Store Bugcrowd program in database"""
         
         # Check for duplicate
-        existing = self.db.query(BugcrowdProgram).filter(
-            BugcrowdProgram.engagement_url == engagement_url
-        ).first()
+        existing_result = await self.db.execute(
+            select(BugcrowdProgram).where(BugcrowdProgram.engagement_url == engagement_url)
+        )
+        existing = existing_result.scalars().first()
         
         if existing:
             existing.last_synced_at = datetime.utcnow()
@@ -180,8 +179,12 @@ class BugcrowdIntegrationService:
                 "in_scope": [t.to_dict() for t in structured_scope.get("in_scope", [])],
                 "out_of_scope": [t.to_dict() for t in structured_scope.get("out_of_scope", [])]
             }
-            existing.metadata = metadata.to_dict()
-            self.db.commit()
+            existing.program_metadata = metadata.to_dict()
+            existing.program_description = metadata.description
+            existing.asset_categories = metadata.asset_categories
+            existing.ai_extraction_used = True
+            existing.extraction_confidence = 85
+            await self.db.commit()
             logger.info(f"Updated existing program: {existing.id}")
             return existing.id
         
@@ -194,7 +197,7 @@ class BugcrowdIntegrationService:
                 "in_scope": [t.to_dict() for t in structured_scope.get("in_scope", [])],
                 "out_of_scope": [t.to_dict() for t in structured_scope.get("out_of_scope", [])]
             },
-            metadata=metadata.to_dict(),
+            program_metadata=metadata.to_dict(),
             status=BugcrowdProgramStatus.ACTIVE,
             program_description=metadata.description,
             asset_categories=metadata.asset_categories,
@@ -205,7 +208,7 @@ class BugcrowdIntegrationService:
         )
         
         self.db.add(program)
-        self.db.commit()
+        await self.db.commit()
         logger.info(f"Created new program: {program.id} - {program_name}")
         return program.id
     
@@ -220,7 +223,8 @@ class BugcrowdIntegrationService:
         imported_count = 0
         updated_count = 0
         
-        program = self.db.query(BugcrowdProgram).filter(BugcrowdProgram.id == program_id).first()
+        program_result = await self.db.execute(select(BugcrowdProgram).where(BugcrowdProgram.id == program_id))
+        program = program_result.scalars().first()
         if not program:
             logger.error(f"Program not found: {program_id}")
             return imported_count, updated_count
@@ -229,12 +233,15 @@ class BugcrowdIntegrationService:
         for target in structured_scope.get("in_scope", []):
             try:
                 # Check for existing asset
-                existing = self.db.query(BugcrowdAsset).filter(
+                existing_result = await self.db.execute(
+                    select(BugcrowdAsset).where(
                     and_(
                         BugcrowdAsset.program_id == program_id,
                         BugcrowdAsset.target == target.target
                     )
-                ).first()
+                    )
+                )
+                existing = existing_result.scalars().first()
                 
                 if existing:
                     existing.asset_type = target.asset_type
@@ -263,7 +270,7 @@ class BugcrowdIntegrationService:
             except Exception as e:
                 logger.error(f"Error storing asset {target.target}: {str(e)}")
         
-        self.db.commit()
+        await self.db.commit()
         logger.info(f"Stored {imported_count} new assets, updated {updated_count} existing")
         return imported_count, updated_count
     
@@ -285,5 +292,5 @@ class BugcrowdIntegrationService:
         )
         
         self.db.add(history)
-        self.db.commit()
+        await self.db.commit()
         logger.info(f"Recorded sync history for program {program_id}")

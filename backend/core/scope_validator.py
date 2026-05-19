@@ -141,3 +141,19 @@ def validate_domain_scope(domain: str, scopes: Iterable[str]) -> bool:
     # normalize_domain will raise if invalid
     norm = normalize_domain(domain)
     return is_target_in_scope(norm, scopes)
+
+
+class ScopeValidator:
+    """Compatibility wrapper used by services that expect a validator object."""
+
+    def validate_target(self, target: str, scope_rules: Iterable[str] | None = None) -> bool:
+        """Validate a target syntactically and optionally against provided scope rules."""
+        try:
+            if scope_rules is not None:
+                return is_target_in_scope(target, scope_rules)
+
+            candidate = target[2:] if target.startswith("*.") else target
+            normalize_domain(candidate)
+            return True
+        except Exception:
+            return False

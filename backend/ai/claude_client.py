@@ -33,6 +33,43 @@ class ClaudeClientError(RuntimeError):
     """Raised when Claude communication fails in a non-recoverable way."""
 
 
+class ClaudeClient:
+    """Compatibility wrapper used by existing services expecting a client object."""
+
+    async def query_async(
+        self,
+        prompt: str,
+        *,
+        organization_id: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 900,
+        model: str = CLAUDE_MODEL_DEFAULT,
+    ) -> str:
+        response = await ask_claude(
+            prompt,
+            organization_id=organization_id,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        return response.get("text", "")
+
+    async def structured_query_async(
+        self,
+        prompt: str,
+        *,
+        organization_id: str | None = None,
+        required_keys: list[str] | None = None,
+        model: str = CLAUDE_MODEL_DEFAULT,
+    ) -> dict[str, Any]:
+        return await generate_structured_response(
+            prompt,
+            organization_id=organization_id,
+            required_keys=required_keys,
+            model=model,
+        )
+
+
 def sanitize_prompt(prompt: str, organization_id: str | None = None) -> str:
     """Sanitize and constrain prompt text before sending to AI provider."""
     text = (prompt or "").strip()

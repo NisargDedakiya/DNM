@@ -81,11 +81,13 @@ class ScopeExtractor:
             }
             
             for target in extracted.get("in_scope", []):
-                normalized = await self.normalize_scope_targets(target, in_scope=True)
+                target_text = target.get("target") if isinstance(target, dict) else target
+                normalized = await self.normalize_scope_targets(target_text or "", in_scope=True)
                 result["in_scope"].extend(normalized)
             
             for target in extracted.get("out_of_scope", []):
-                normalized = await self.normalize_scope_targets(target, in_scope=False)
+                target_text = target.get("target") if isinstance(target, dict) else target
+                normalized = await self.normalize_scope_targets(target_text or "", in_scope=False)
                 result["out_of_scope"].extend(normalized)
             
             logger.info(f"Extracted {len(result['in_scope'])} in-scope and {len(result['out_of_scope'])} out-of-scope targets")
@@ -176,7 +178,10 @@ Return only the JSON object, no markdown formatting or additional text."""
         targets = []
         
         # Clean the target
-        target_str = target_str.strip()
+        if isinstance(target_str, dict):
+            target_str = target_str.get("target", "")
+
+        target_str = str(target_str).strip()
         if not target_str:
             return targets
         
