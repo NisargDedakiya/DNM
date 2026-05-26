@@ -1,4 +1,4 @@
-from .manager import manager
+from .manager import websocket_manager as manager
 from . import events
 from . import pubsub
 

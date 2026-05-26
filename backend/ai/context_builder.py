@@ -124,7 +124,7 @@ class ContextBuilder:
             "hostname": _s(asset.hostname),
             "ip_address": _s(asset.ip_address),
             "is_alive": asset.is_alive,
-            "is_internet_facing": asset.is_internet_facing,
+            "is_internet_facing": getattr(asset, "is_internet_facing", False),
             "risk_score": round(asset.risk_score or 0, 2),
             "first_seen": _s(asset.first_seen.isoformat() if asset.first_seen else None),
             "last_seen": _s(asset.last_seen.isoformat() if asset.last_seen else None),
@@ -253,7 +253,7 @@ class ContextBuilder:
                 asset_data = {
                     "hostname": _s(asset.hostname),
                     "ip_address": _s(asset.ip_address),
-                    "is_internet_facing": asset.is_internet_facing,
+                    "is_internet_facing": getattr(asset, "is_internet_facing", False),
                     "risk_score": round(asset.risk_score or 0, 2),
                 }
 

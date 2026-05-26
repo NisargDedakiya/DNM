@@ -2,13 +2,21 @@
 Exposure intelligence service.
 Manages exposure lifecycle, tracking, and categorization.
 """
+from __future__ import annotations
+
+import logging
 from uuid import UUID
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.events import EventType
+from backend.exposure.drift_detector import DriftDetector
+from backend.exposure.exposure_tracker import ExposureTracker
+from backend.exposure.regression_detector import RegressionDetector
+from backend.exposure.risk_evolution import RiskEvolution
 from backend.models.exposure import (
     Exposure,
     ExposureHistory,
@@ -17,6 +25,9 @@ from backend.models.exposure import (
 )
 from backend.models.asset import Asset
 from backend.models.finding import Finding
+from backend.services.event_service import event_service
+
+logger = logging.getLogger(__name__)
 
 
 class ExposureService:
@@ -28,6 +39,10 @@ class ExposureService:
     def __init__(self, db: AsyncSession):
         """Initialize exposure service."""
         self.db = db
+        self.tracker = ExposureTracker(db)
+        self.drift_detector = DriftDetector(db)
+        self.risk_evolution = RiskEvolution(db)
+        self.regression_detector = RegressionDetector(db)
 
     async def create_exposure(
         self,
@@ -556,3 +571,113 @@ class ExposureService:
         }
 
         return summary
+
+    async def analyze_exposure_evolution(
+        self,
+        organization_id: UUID,
+        asset: str | None = None,
+        limit: int = 100,
+    ) -> dict:
+        previous_snapshot = await self.tracker.get_latest_snapshot(organization_id, asset=asset)
+        current_snapshot = await self.tracker.create_exposure_snapshot(organization_id, asset=asset, limit=limit)
+
+        drift = await self.drift_detector.detect_asset_drift(organization_id, asset=asset, limit=limit)
+        risk_history = await self.risk_evolution.summarize_history(organization_id, asset=asset, limit=limit)
+        regressions = await self.regression_detector.detect_regressions(organization_id, asset=asset, limit=limit)
+
+        if previous_snapshot:
+            risk_event = self.risk_evolution.calculate_risk_evolution(previous_snapshot.risk_score, current_snapshot.risk_score)
+        else:
+            risk_event = self.risk_evolution.calculate_risk_evolution(0.0, current_snapshot.risk_score)
+
+        await event_service.emit_event(
+            EventType.EXPOSURE_SNAPSHOT,
+            str(organization_id),
+            {
+                "asset": asset or current_snapshot.asset,
+                "snapshot_id": str(current_snapshot.id),
+                "risk_score": current_snapshot.risk_score,
+                "summary": {
+                    "risk_history": risk_history,
+                    "drift_severity": drift.get("severity", "info"),
+                    "regression_count": regressions.get("regression_count", 0),
+                },
+            },
+        )
+        if drift.get("drift_detected"):
+            await event_service.emit_event(EventType.EXPOSURE_DRIFT, str(organization_id), drift)
+        await event_service.emit_event(EventType.EXPOSURE_RISK_EVO, str(organization_id), risk_event)
+        if regressions.get("regression_count", 0):
+            await event_service.emit_event(EventType.EXPOSURE_REGRESSION, str(organization_id), regressions)
+
+        return {
+            "organization_id": str(organization_id),
+            "asset": asset or current_snapshot.asset,
+            "snapshot": {
+                "id": str(current_snapshot.id),
+                "asset": current_snapshot.asset,
+                "risk_score": current_snapshot.risk_score,
+                "created_at": current_snapshot.created_at.isoformat(),
+                "state_size": len(current_snapshot.exposure_state),
+            },
+            "drift": drift,
+            "risk_evolution": risk_event,
+            "risk_history": risk_history,
+            "regressions": regressions,
+            "summary": {
+                "total_exposures": len(current_snapshot.exposure_state),
+                "high_risk_exposures": len(
+                    [
+                        item
+                        for item in current_snapshot.exposure_state.values()
+                        if str(item.get("risk_level", "")).lower() in {"critical", "high"}
+                    ]
+                ),
+                "drift_severity": drift.get("severity", "info"),
+                "risk_direction": risk_event.get("direction", "stable"),
+                "regression_count": regressions.get("regression_count", 0),
+            },
+        }
+
+    async def generate_exposure_summary(
+        self,
+        organization_id: UUID,
+        asset: str | None = None,
+    ) -> dict:
+        current_snapshot = await self.tracker.get_latest_snapshot(organization_id, asset=asset)
+        if not current_snapshot:
+            current_snapshot = await self.tracker.create_exposure_snapshot(organization_id, asset=asset)
+
+        exposure_state = current_snapshot.exposure_state
+        total_exposures = len(exposure_state)
+        critical_exposures = sum(1 for item in exposure_state.values() if str(item.get("risk_level", "")).lower() == "critical")
+        high_exposures = sum(1 for item in exposure_state.values() if str(item.get("risk_level", "")).lower() == "high")
+        active_exposures = sum(1 for item in exposure_state.values() if item.get("is_active"))
+
+        return {
+            "organization_id": str(organization_id),
+            "asset": asset,
+            "total_exposures": total_exposures,
+            "critical_exposures": critical_exposures,
+            "high_exposures": high_exposures,
+            "active_exposures": active_exposures,
+            "overall_risk_score": round(float(current_snapshot.risk_score), 2),
+            "risk_level": "critical" if current_snapshot.risk_score >= 8 else "high" if current_snapshot.risk_score >= 6 else "medium" if current_snapshot.risk_score >= 3 else "low",
+            "snapshot_id": str(current_snapshot.id),
+        }
+
+    async def detect_high_risk_exposure_changes(
+        self,
+        organization_id: UUID,
+        asset: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        drift = await self.drift_detector.detect_asset_drift(organization_id, asset=asset, limit=limit)
+        regressions = await self.regression_detector.detect_regressions(organization_id, asset=asset, limit=limit)
+        return {
+            "organization_id": str(organization_id),
+            "asset": asset,
+            "severity": drift.get("severity", "info"),
+            "high_risk_changes": drift.get("high_risk_changes", []),
+            "regressions": regressions,
+        }

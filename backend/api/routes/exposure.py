@@ -3,6 +3,7 @@ Exposure intelligence API routes.
 Endpoints for exposure analysis, scoring, and prioritization.
 """
 from uuid import UUID
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from backend.services.risk_service import RiskService
 from backend.services.fingerprinting_service import FingerprintingService
 
 router = APIRouter(prefix="/exposures", tags=["exposures"])
+timeline_router = APIRouter(prefix="/exposure", tags=["exposure-timeline"])
 
 
 async def get_exposure_service(db: AsyncSession = Depends(get_db)) -> ExposureService:
@@ -31,6 +33,10 @@ async def get_risk_service(db: AsyncSession = Depends(get_db)) -> RiskService:
 async def get_rbac_service(db: AsyncSession = Depends(get_db)) -> RBACService:
     """Dependency for RBAC service."""
     return RBACService(db)
+
+
+async def get_timeline_exposure_service(db: AsyncSession = Depends(get_db)) -> ExposureService:
+    return ExposureService(db)
 
 
 # ============================================================================
@@ -357,6 +363,83 @@ async def get_asset_risk_scores(
     # Would query assets and calculate risk for each
     # For now, returning empty (requires Asset query integration)
     return []
+
+
+# ============================================================================
+# CONTINUOUS TIMELINE ENDPOINTS
+# ============================================================================
+
+
+@timeline_router.get(
+    "/timeline",
+    summary="Continuous exposure timeline",
+    description="Returns the latest exposure snapshot, drift analysis, risk evolution, and regression intelligence.",
+)
+async def get_exposure_timeline(
+    organization_id: UUID = Query(...),
+    asset: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    exposure_service: ExposureService = Depends(get_timeline_exposure_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.VIEW_ASSETS)
+    return await exposure_service.analyze_exposure_evolution(organization_id, asset=asset, limit=limit)
+
+
+@timeline_router.get(
+    "/drift",
+    summary="Exposure drift analysis",
+    description="Returns drift detection results for the most recent exposure snapshots.",
+)
+async def get_exposure_drift(
+    organization_id: UUID = Query(...),
+    asset: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    exposure_service: ExposureService = Depends(get_timeline_exposure_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.VIEW_ASSETS)
+    return await exposure_service.detect_high_risk_exposure_changes(organization_id, asset=asset, limit=limit)
+
+
+@timeline_router.get(
+    "/risk-evolution",
+    summary="Risk evolution history",
+    description="Returns historical risk deltas and escalation analysis for exposure tracking.",
+)
+async def get_risk_evolution(
+    organization_id: UUID = Query(...),
+    asset: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    exposure_service: ExposureService = Depends(get_timeline_exposure_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.VIEW_ASSETS)
+    return await exposure_service.risk_evolution.summarize_history(organization_id, asset=asset, limit=limit)
+
+
+@timeline_router.get(
+    "/regressions",
+    summary="Exposure regression analysis",
+    description="Returns repeated exposure patterns and reintroduced vulnerabilities.",
+)
+async def get_exposure_regressions(
+    organization_id: UUID = Query(...),
+    asset: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    exposure_service: ExposureService = Depends(get_timeline_exposure_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.VIEW_FINDINGS)
+    return await exposure_service.regression_detector.detect_regressions(organization_id, asset=asset, limit=limit)
 
 
 # ============================================================================

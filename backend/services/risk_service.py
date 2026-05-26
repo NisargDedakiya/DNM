@@ -425,7 +425,7 @@ class RiskService:
         multiplier = 1.0
 
         # Internet-facing assets are more critical
-        if asset.is_internet_facing:
+        if getattr(asset, "is_internet_facing", False):
             multiplier *= self.ASSET_CRITICALITY_FACTORS.get(
                 "internet_facing", 1.0
             )

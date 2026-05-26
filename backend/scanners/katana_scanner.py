@@ -22,7 +22,8 @@ class KatanaScanner(BaseScanner):
             raise ValueError("Invalid target")
 
         sanitized = self.sanitize_target(target)
-        cmd = ["katana", "-u", sanitized, "-silent"]
+        # Added -d 2 to limit crawl depth and -rl 20 for rate limiting to prevent aggressive crawling
+        cmd = ["katana", "-u", sanitized, "-silent", "-d", "2", "-rl", "20"]
         stdout, stderr = await self.execute_subprocess(cmd)
         results = parse_katana_output(stdout)
         return {"target": sanitized, "endpoints": results, "raw": stdout, "stderr": stderr}

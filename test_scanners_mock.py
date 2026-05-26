@@ -14,20 +14,20 @@ class MockSubfinderScanner:
         """Mock Subfinder returning realistic subdomains."""
         await asyncio.sleep(1)  # Simulate processing
         
-        # Realistic subdomains for example.com
+        # Realistic subdomains for target
         subdomains = [
-            "example.com",
-            "www.example.com",
-            "mail.example.com",
-            "ftp.example.com",
-            "admin.example.com",
-            "api.example.com",
-            "cdn.example.com",
-            "ns1.example.com",
-            "dns.example.com",
-            "smtp.example.com",
-            "pop.example.com",
-            "imap.example.com",
+            f"{target}",
+            f"www.{target}",
+            f"mail.{target}",
+            f"ftp.{target}",
+            f"admin.{target}",
+            f"api.{target}",
+            f"cdn.{target}",
+            f"ns1.{target}",
+            f"dns.{target}",
+            f"smtp.{target}",
+            f"pop.{target}",
+            f"imap.{target}",
         ]
         
         return {
@@ -46,10 +46,11 @@ class MockHttpxScanner:
         """Mock HTTPx returning live hosts."""
         await asyncio.sleep(2)  # Simulate probing
         
-        # Realistic HTTP responses for example.com
+        # Dynamic realistic HTTP responses
+        target = targets[0] if targets else "example.com"
         live_hosts = [
             {
-                "url": "http://example.com",
+                "url": f"http://{target}",
                 "status_code": 200,
                 "title": "Example Domain",
                 "content_length": 1256,
@@ -57,7 +58,7 @@ class MockHttpxScanner:
                 "scheme": "http",
             },
             {
-                "url": "https://example.com",
+                "url": f"https://{target}",
                 "status_code": 200,
                 "title": "Example Domain",
                 "content_length": 1256,
@@ -65,7 +66,7 @@ class MockHttpxScanner:
                 "scheme": "https",
             },
             {
-                "url": "http://www.example.com",
+                "url": f"http://www.{target}",
                 "status_code": 301,
                 "title": None,
                 "content_length": 162,
@@ -73,7 +74,7 @@ class MockHttpxScanner:
                 "scheme": "http",
             },
             {
-                "url": "http://api.example.com",
+                "url": f"http://api.{target}",
                 "status_code": 200,
                 "title": "API Server",
                 "content_length": 456,
@@ -90,15 +91,14 @@ class MockHttpxScanner:
         }
 
 
-async def run_test():
+async def run_test(target="example.com"):
     """Run complete mock scanner test."""
     print("=" * 80)
     print(" " * 15 + "🔍 NisargHunter AI - Recon Engine Test")
-    print(" " * 20 + "example.com Website Scanning")
+    print(" " * 20 + f"{target} Website Scanning")
     print("=" * 80)
     print()
     
-    target = "example.com"
     start_time = datetime.now()
     
     print(f"📋 SCAN DETAILS")
@@ -113,7 +113,7 @@ async def run_test():
     
     # Stage 1: Subfinder
     print("▶ STAGE 1: Subdomain Enumeration (Subfinder)")
-    print("  Command:    subfinder -d example.com -silent")
+    print(f"  Command:    subfinder -d {target} -silent")
     print("  Status:     Running...")
     print()
     
@@ -266,4 +266,6 @@ async def run_test():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_test())
+    import sys
+    target = sys.argv[1] if len(sys.argv) > 1 else "example.com"
+    asyncio.run(run_test(target))

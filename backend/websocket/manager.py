@@ -1,91 +1,62 @@
-"""
-WebSocket connection manager.
-
-Tracks per-user WebSocket connections and ties into a Redis-backed pub/sub listener.
-"""
-from __future__ import annotations
-
-import asyncio
-import logging
-from typing import Dict, Set
-
+from typing import Dict, List, Any
 from fastapi import WebSocket
-
-from backend.websocket import pubsub
+import logging
+import json
 
 logger = logging.getLogger(__name__)
 
-
 class ConnectionManager:
-    def __init__(self) -> None:
-        # Map user_id -> set of WebSocket connections
-        self._connections: Dict[str, Set[WebSocket]] = {}
-        # Map user_id -> asyncio.Task running the Redis listener
-        self._tasks: Dict[str, asyncio.Task] = {}
-        self._lock = asyncio.Lock()
+    def __init__(self):
+        # Format: { org_id: { user_id: [websocket1, websocket2] } }
+        self.active_connections: Dict[str, Dict[str, List[WebSocket]]] = {}
 
-    async def connect(self, user_id: str, websocket: WebSocket) -> None:
-        async with self._lock:
-            conns = self._connections.setdefault(user_id, set())
-            conns.add(websocket)
-            logger.debug("User %s connected, total=%d", user_id, len(conns))
-            # Start pubsub listener for this user if not running
-            if user_id not in self._tasks:
-                task = asyncio.create_task(self._start_user_listener(user_id))
-                self._tasks[user_id] = task
+    async def connect(self, websocket: WebSocket, org_id: str, user_id: str):
+        await websocket.accept()
+        if org_id not in self.active_connections:
+            self.active_connections[org_id] = {}
+        if user_id not in self.active_connections[org_id]:
+            self.active_connections[org_id][user_id] = []
+            
+        self.active_connections[org_id][user_id].append(websocket)
+        logger.info(f"Client {user_id} connected to org {org_id}")
 
-    async def disconnect(self, user_id: str, websocket: WebSocket) -> None:
-        async with self._lock:
-            conns = self._connections.get(user_id)
-            if not conns:
-                return
-            conns.discard(websocket)
-            logger.debug("User %s disconnected, remaining=%d", user_id, len(conns))
-            if len(conns) == 0:
-                # Cancel pubsub listener
-                task = self._tasks.pop(user_id, None)
-                if task:
-                    task.cancel()
-                self._connections.pop(user_id, None)
+    def disconnect(self, websocket: WebSocket, org_id: str, user_id: str):
+        if org_id in self.active_connections and user_id in self.active_connections[org_id]:
+            if websocket in self.active_connections[org_id][user_id]:
+                self.active_connections[org_id][user_id].remove(websocket)
+            
+            if not self.active_connections[org_id][user_id]:
+                del self.active_connections[org_id][user_id]
+            if not self.active_connections[org_id]:
+                del self.active_connections[org_id]
+                
+        logger.info(f"Client {user_id} disconnected from org {org_id}")
 
-    async def send_personal_message(self, websocket: WebSocket, message: dict) -> None:
-        try:
-            await websocket.send_json(message)
-        except Exception:
-            # let caller handle disconnect
-            logger.exception("Failed sending personal message to websocket")
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
 
-    async def broadcast_to_user(self, user_id: str, message: dict) -> None:
-        """Send message to all active websockets for a user."""
-        conns = self._connections.get(user_id, set())
-        if not conns:
-            return
-        dead: Set[WebSocket] = set()
-        for ws in set(conns):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                logger.exception("Websocket send failed for user %s", user_id)
-                dead.add(ws)
-        if dead:
-            async with self._lock:
-                for ws in dead:
-                    conns.discard(ws)
-                if len(conns) == 0:
-                    # Cancel associated task
-                    task = self._tasks.pop(user_id, None)
-                    if task:
-                        task.cancel()
-                    self._connections.pop(user_id, None)
+    async def send_to_org(self, org_id: str, message: Dict[str, Any]):
+        """Broadcast an event to all users within a specific organization."""
+        if org_id in self.active_connections:
+            message_str = json.dumps(message)
+            for user_id, connections in self.active_connections[org_id].items():
+                for connection in connections:
+                    try:
+                        await connection.send_text(message_str)
+                    except Exception as e:
+                        logger.error(f"Error sending message to {user_id}: {e}")
+                        self.disconnect(connection, org_id, user_id)
 
-    async def _start_user_listener(self, user_id: str) -> None:
-        """Start Redis pub/sub listener that forwards events to user websockets."""
-        try:
-            await pubsub.subscribe_to_events(user_id, self.broadcast_to_user)
-        except asyncio.CancelledError:
-            logger.debug("User listener cancelled for %s", user_id)
-        except Exception:
-            logger.exception("User listener failed for %s", user_id)
+    async def broadcast(self, message: Dict[str, Any]):
+        """Broadcast to all connected clients (use carefully!)."""
+        message_str = json.dumps(message)
+        for org_id in list(self.active_connections.keys()):
+            for user_id in list(self.active_connections[org_id].keys()):
+                for connection in self.active_connections[org_id][user_id]:
+                    try:
+                        await connection.send_text(message_str)
+                    except Exception as e:
+                        logger.error(f"Error broadcasting message: {e}")
+                        self.disconnect(connection, org_id, user_id)
 
-
-manager = ConnectionManager()
+websocket_manager = ConnectionManager()

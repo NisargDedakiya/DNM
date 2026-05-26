@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nisarghunter-workers
+  labels:
+    app: nisarghunter
+    component: workers
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: nisarghunter
+      component: workers
+  template:
+    metadata:
+      labels:
+        app: nisarghunter
+        component: workers
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: workers
+          image: ghcr.io/nisarghunter/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "python -m backend.workers.job_manager"]
+          envFrom:
+            - secretRef:
+                name: nisarghunter-secrets
+          env:
+            - name: WORKER_MODE
+              value: "true"
+          resources:
+            requests:
+              cpu: 300m
+              memory: 384Mi
+            limits:
+              cpu: 1500m
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "exit 0"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "echo draining worker && sleep 5"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001

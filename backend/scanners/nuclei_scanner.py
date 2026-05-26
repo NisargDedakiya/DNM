@@ -21,7 +21,9 @@ class NucleiScanner(BaseScanner):
             raise ValueError("Invalid target")
 
         sanitized = self.sanitize_target(target)
-        cmd = ["nuclei", "-u", sanitized, "-json"]
+        # Added -severity info to ensure only non-aggressive recon templates are run
+        # Added -rl 20 to enforce rate limiting and prevent aggressive traffic
+        cmd = ["nuclei", "-u", sanitized, "-json", "-severity", "info", "-rl", "20"]
         stdout, stderr = await self.execute_subprocess(cmd)
         # nuclei may output multiple json objects per line; parse robustly
         parsed = parse_nuclei_output(stdout)

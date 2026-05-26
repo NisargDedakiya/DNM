@@ -71,3 +71,7 @@ htmlcov/
 # Docker
 .docker/
 .dockerignore
+
+# Frontend dependencies
+frontend/node_modules/
+webapp/node_modules/

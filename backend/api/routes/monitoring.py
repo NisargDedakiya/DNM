@@ -3,6 +3,7 @@ Monitoring API routes for continuous recon management.
 Handles monitoring rules, alerts, and real-time notifications.
 """
 from uuid import UUID
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,11 +88,10 @@ async def create_monitoring_rule(
     await rbac.validate_workspace_access(current_user.id, organization_id)
 
     # Check permission
-    await rbac.enforce_permission(
+    await rbac.check_permission(
         current_user.id,
         organization_id,
         Permission.RUN_SCANS,
-        "Creating monitoring rules",
     )
 
     try:
@@ -367,11 +367,10 @@ async def trigger_monitoring_rule(
     await rbac.validate_workspace_access(current_user.id, rule.organization_id)
 
     # Check permission to run scans
-    await rbac.enforce_permission(
+    await rbac.check_permission(
         current_user.id,
         rule.organization_id,
         Permission.RUN_SCANS,
-        "Running scans",
     )
 
     try:
@@ -400,6 +399,99 @@ async def trigger_monitoring_rule(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to queue scan: {str(e)}",
         )
+
+
+# ============================================================================
+# OBSERVABILITY ENDPOINTS
+# ============================================================================
+
+
+@router.get(
+    "/health",
+    summary="Get platform health summary",
+    description="Get org-isolated platform health across system, workers, Redis, and websocket telemetry",
+)
+async def get_platform_health(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    monitoring_service: MonitoringService = Depends(get_monitoring_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.MANAGE_SCANS)
+    return await monitoring_service.generate_health_summary(organization_id)
+
+
+@router.get(
+    "/metrics",
+    summary="Get platform metrics",
+    description="Get org-scoped monitoring metrics and Prometheus exposition text",
+)
+async def get_platform_metrics(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    monitoring_service: MonitoringService = Depends(get_monitoring_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.MANAGE_SCANS)
+    summary = await monitoring_service.monitor_platform_health(organization_id)
+    return {
+        "organization_id": str(organization_id),
+        "health_score": summary["health_score"],
+        "metrics": summary.get("metrics", {}),
+        "prometheus": summary.get("prometheus", ""),
+        "system": summary.get("system", {}),
+        "redis": summary.get("redis", {}),
+    }
+
+
+@router.get(
+    "/workers",
+    summary="Get worker telemetry",
+    description="Get distributed worker telemetry and bottleneck analysis",
+)
+async def get_worker_telemetry(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    monitoring_service: MonitoringService = Depends(get_monitoring_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.MANAGE_SCANS)
+    return await monitoring_service.get_worker_telemetry(organization_id)
+
+
+@router.get(
+    "/ai",
+    summary="Get AI telemetry",
+    description="Get AI token usage, latency, cache hit rate, and provider health",
+)
+async def get_ai_telemetry(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    monitoring_service: MonitoringService = Depends(get_monitoring_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.MANAGE_SCANS)
+    return await monitoring_service.get_ai_telemetry(organization_id)
+
+
+@router.get(
+    "/websocket",
+    summary="Get websocket telemetry",
+    description="Get websocket connection health, reconnects, and event delivery visibility",
+)
+async def get_websocket_telemetry(
+    organization_id: UUID,
+    current_user: User = Depends(get_current_user),
+    monitoring_service: MonitoringService = Depends(get_monitoring_service),
+    rbac: RBACService = Depends(get_rbac_service),
+) -> dict[str, Any]:
+    await rbac.validate_workspace_access(current_user.id, organization_id)
+    await rbac.check_permission(current_user.id, organization_id, Permission.MANAGE_SCANS)
+    return await monitoring_service.get_websocket_telemetry(organization_id)
 
 
 # ============================================================================
