@@ -26,7 +26,7 @@ def upgrade() -> None:
     # Use SQLAlchemy Core connection to run metadata.create_all
     from backend.database.base import Base
 
-    bind.run_sync(lambda connection: Base.metadata.create_all(connection))
+    Base.metadata.create_all(bind)
 
 
 def downgrade() -> None:
@@ -34,4 +34,4 @@ def downgrade() -> None:
     bind = op.get_bind()
     from backend.database.base import Base
 
-    bind.run_sync(lambda connection: Base.metadata.drop_all(connection))
+    Base.metadata.drop_all(bind)

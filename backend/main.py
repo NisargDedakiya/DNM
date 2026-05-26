@@ -23,6 +23,8 @@ from backend.api.routes import organizations as organizations_routes
 from backend.api.routes import monitoring as monitoring_routes
 from backend.api.routes import grid as grid_routes
 from backend.api.routes import performance as performance_routes
+from backend.api.routes import sensei as sensei_routes
+
 from backend.api.routes import sso as sso_routes
 from backend.api.routes import exposure as exposure_routes
 from backend.api.routes import recon_ai as recon_ai_routes
@@ -37,6 +39,7 @@ from backend.api.routes import copilot as copilot_routes
 from backend.api.routes import integrations as integrations_routes
 from backend.api.routes import notifications as notifications_routes
 from backend.api.routes import hackerone as hackerone_routes
+from backend.api.routes import reports as reports_routes
 from backend.api.routes import cluster as cluster_routes
 from backend.api.routes import collaboration as collaboration_routes
 from backend.api.routes import threat as threat_routes
@@ -123,6 +126,8 @@ def create_app() -> FastAPI:
     api_router.include_router(monitoring_routes.router)
     api_router.include_router(grid_routes.router)
     api_router.include_router(performance_routes.router)
+    api_router.include_router(sensei_routes.router)
+
     api_router.include_router(sso_routes.router)
     api_router.include_router(exposure_routes.router)
     api_router.include_router(exposure_routes.timeline_router)
@@ -140,6 +145,7 @@ def create_app() -> FastAPI:
     api_router.include_router(integrations_routes.router)
     api_router.include_router(notifications_routes.router)
     api_router.include_router(hackerone_routes.router)
+    api_router.include_router(reports_routes.router)
     api_router.include_router(cluster_routes.router)
     api_router.include_router(collaboration_routes.router)
     api_router.include_router(threat_routes.router)

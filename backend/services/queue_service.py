@@ -3,7 +3,7 @@ Queue service to enqueue background scan jobs using ARQ.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from arq import create_pool
 
 from backend.workers import job_manager
@@ -39,3 +39,21 @@ async def enqueue_katana_scan(targets: List[str], user_id: str, program_id: str)
     finally:
         await pool.close()
     return job_id
+
+
+async def _enqueue_task(function_name: str, *args: Any) -> None:
+    pool = await create_pool(settings.redis_url)
+    try:
+        await pool.enqueue_job(function_name, *args)
+    finally:
+        await pool.close()
+
+
+async def enqueue_full_scan(scan_id: str, program_id: str, org_id: str, targets: List[str], tech_stack: str, scope_json: dict, stealth: bool = False) -> str:
+    await _enqueue_task("run_full_scan", scan_id, program_id, org_id, targets, tech_stack, scope_json, stealth)
+    return scan_id
+
+
+async def enqueue_dalfox_scan(scan_id: str, program_id: str, org_id: str, urls: List[str], scope_json: dict) -> str:
+    await _enqueue_task("run_dalfox_scan", scan_id, program_id, org_id, urls, scope_json)
+    return scan_id

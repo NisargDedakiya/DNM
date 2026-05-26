@@ -44,3 +44,36 @@ export async function getScanResults(id: string, params?: { limit?: number; offs
   const r = await api.get(`/scans/${id}/results`, { params })
   return r.data
 }
+
+export interface ScanPhase {
+  name: string
+  status: 'completed' | 'active' | 'pending'
+  current_tool?: string
+  elapsed?: string
+}
+
+export interface ScanStatusResponse {
+  scan_id: string
+  status: string
+  current_step: string
+  elapsed_time: string
+  current_tool?: string
+  phases: ScanPhase[]
+  stats: {
+    subdomains: number
+    live_hosts: number
+    endpoints: number
+    findings: number
+  }
+}
+
+export async function getScanStatus(scanId: string): Promise<ScanStatusResponse> {
+  const r = await api.get(`/scans/${scanId}/status`)
+  return r.data as ScanStatusResponse
+}
+
+export async function pauseScan(scanId: string): Promise<{ status: string }> {
+  const r = await api.post(`/scans/${scanId}/pause`, {})
+  return r.data
+}
+

@@ -1,94 +1,79 @@
-"""
-Deterministic scope validation engine for scan authorization.
-
-Responsibilities:
-- normalize targets (domain/IP/URL)
-- wildcard rule matching
-- scope compatibility checks
-- strict authorization decisions
-"""
-from __future__ import annotations
-
+import fnmatch
 import ipaddress
 import re
 from urllib.parse import urlparse
 
-_DOMAIN_RE = re.compile(r"^(?:[A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63}$")
-
-
-def _to_idna(host: str) -> str:
-    return host.encode("idna").decode("ascii")
-
-
 def normalize_target(target: str) -> str:
-    """Normalize a scan target into canonical lowercase host representation."""
-    if not target or not target.strip():
-        raise ValueError("Target cannot be empty")
+    target = target.strip()
+    target = re.sub(r"^(https?://)", "", target, flags=re.IGNORECASE)
+    target = re.sub(r"^www\.", "", target, flags=re.IGNORECASE)
+    target = target.rstrip("/")
+    if any(c.isalpha() for c in target):
+        target = target.lower()
+    return target
 
-    raw = target.strip()
-    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
-    host = (parsed.hostname or "").strip().lower().rstrip(".")
+class ScopeViolationError(Exception):
+    def __init__(self, target: str, reason: str):
+        super().__init__(f'Out of scope: {target} — {reason}')
+        self.target = target
+        self.reason = reason
 
-    if not host:
-        raise ValueError("Target host could not be parsed")
+class ScopeValidator:
 
-    # Validate IP literals first.
-    try:
-        ip = ipaddress.ip_address(host)
-        return str(ip)
-    except ValueError:
-        pass
+    @staticmethod
+    def _domain(target: str) -> str:
+        try:
+            p = urlparse(target if '://' in target else 'https://'+target)
+            return p.netloc or p.path.split('/')[0]
+        except Exception:
+            return target
 
-    try:
-        host_ascii = _to_idna(host)
-    except Exception as exc:
-        raise ValueError(f"Invalid host encoding: {host}") from exc
+    @staticmethod
+    def _wildcard_match(domain: str, pattern: str) -> bool:
+        # *.example.com matches sub.example.com but NOT example.com
+        if pattern.startswith('*.'):
+            suffix = pattern[2:]
+            return domain.endswith('.'+suffix) or domain == suffix
+        return fnmatch.fnmatch(domain.lower(), pattern.lower())
 
-    if not _DOMAIN_RE.match(host_ascii):
-        raise ValueError(f"Invalid domain format: {host_ascii}")
-
-    return host_ascii
-
-
-def match_scope_rule(normalized_target: str, scope_rule: str) -> bool:
-    """Match normalized target host against one scope rule.
-
-    Supported scope rules:
-    - example.com (exact only)
-    - *.example.com (subdomains only, not apex)
-    """
-    if not scope_rule or not scope_rule.strip():
-        return False
-
-    rule = scope_rule.strip().lower().rstrip(".")
-
-    if rule.startswith("*."):
-        base = normalize_target(rule[2:])
-        if normalized_target == base:
+    @staticmethod
+    def _cidr_match(addr: str, cidr: str) -> bool:
+        try:
+            return ipaddress.ip_address(addr) in ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
             return False
-        return normalized_target.endswith(f".{base}")
 
-    return normalized_target == normalize_target(rule)
+    @classmethod
+    def check(cls, target: str, scope_json: dict) -> tuple[bool, str]:
+        # Returns (ok, reason)
+        # scope_json format from your H1 client:
+        # {in_scope: [{asset_identifier, asset_type}], out_of_scope: [...], no_auto_scan: bool}
+        if scope_json.get('no_auto_scan'):
+            return False, 'Program prohibits automated scanning'
+        d = cls._domain(target)
+        # Check out of scope FIRST
+        for item in scope_json.get('out_of_scope', []):
+            pat = item.get('asset_identifier', '')
+            if cls._wildcard_match(d, pat) or cls._cidr_match(d, pat):
+                return False, f'Matches out-of-scope: {pat}'
+        # Check in scope
+        for item in scope_json.get('in_scope', []):
+            pat = item.get('asset_identifier', '')
+            if cls._wildcard_match(d, pat) or cls._cidr_match(d, pat):
+                return True, 'In scope'
+        return False, 'Not found in any in-scope pattern'
 
+    @classmethod
+    def validate_or_raise(cls, target: str, scope_json: dict):
+        ok, reason = cls.check(target, scope_json)
+        if not ok:
+            raise ScopeViolationError(target, reason)
 
-def is_authorized_target(target: str, scope_rules: list[str]) -> bool:
-    """Return True when target is strictly authorized by provided scope rules."""
-    normalized = normalize_target(target)
-
-    if not scope_rules:
-        return False
-
-    return any(match_scope_rule(normalized, rule) for rule in scope_rules)
-
-
-def validate_target(target: str, scope_rules: list[str]) -> dict[str, str | bool]:
-    """Validate target against scope and return deterministic decision payload."""
-    normalized = normalize_target(target)
-    authorized = is_authorized_target(normalized, scope_rules)
-
-    return {
-        "target": target,
-        "normalized_target": normalized,
-        "authorized": authorized,
-        "reason": "in_scope" if authorized else "out_of_scope",
-    }
+    @classmethod
+    def filter_valid(cls, targets: list[str], scope_json: dict) -> tuple[list, list]:
+        # Returns (valid_targets, invalid_targets_with_reasons)
+        valid, invalid = [], []
+        for t in targets:
+            ok, reason = cls.check(t, scope_json)
+            (valid if ok else invalid).append(t if ok else {'target': t, 'reason': reason})
+        return valid, invalid

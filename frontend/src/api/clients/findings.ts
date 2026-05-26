@@ -47,3 +47,14 @@ export async function triageFinding(id: string) {
   const r = await api.post(`/findings/${id}/triage`)
   return r.data
 }
+
+export async function getFinding(id: string): Promise<Finding> {
+  const r = await api.get(`/findings/${id}`)
+  return r.data as Finding
+}
+
+export async function confirmFinding(id: string): Promise<Finding> {
+  const r = await api.put(`/findings/${id}`, { status: 'confirmed' })
+  return r.data as Finding
+}
+

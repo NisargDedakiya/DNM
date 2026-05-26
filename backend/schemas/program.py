@@ -38,6 +38,11 @@ class ProgramResponse(BaseModel):
     scope: str
     description: Optional[str]
     created_by: UUID
+    organization_id: Optional[UUID] = None
+    handle: Optional[str] = None
+    is_private: bool = False
+    scope_json: Optional[dict] = None
+    is_active: bool = True
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 

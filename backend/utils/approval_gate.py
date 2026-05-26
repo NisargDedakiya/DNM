@@ -1,146 +1,55 @@
-"""
-Human approval gate for scan execution safety.
+import asyncio
+import json
+from datetime import datetime, UTC
+from uuid import UUID
 
-Blocks dangerous or sensitive scan workflows unless explicit approval is present.
-"""
-from __future__ import annotations
+TIMEOUT = 3600  # 1 hour
+POLL    = 5     # seconds between polls
 
-from typing import Any
+class ApprovalGate:
 
+    @staticmethod
+    async def request(
+        scan_id: UUID,
+        message: str,
+        targets: list[str],
+        tool: str,
+        org_id: UUID,
+    ) -> bool:
+        from backend.core.redis import get_redis
+        redis = await get_redis()
 
-HIGH_RISK_SCANNERS = {
-    "sqlmap",
-    "ffuf",
-    "wfuzz",
-}
+        req_key  = f'approval:req:{scan_id}'
+        resp_key = f'approval:resp:{scan_id}'
+        channel  = f'alerts:{org_id}'  # same channel Phase 16 monitoring uses
 
-APPROVAL_REQUIRED_FLAGS = {
-    "authenticated_scan",
-    "aggressive_fuzzing",
-    "high_depth_crawling",
-}
+        payload = json.dumps({
+            'event': 'approval_request',
+            'scan_id': str(scan_id),
+            'message': message,
+            'targets_preview': targets[:5],
+            'total_targets': len(targets),
+            'tool': tool,
+            'requested_at': datetime.now(UTC).isoformat(),
+        })
+        await redis.setex(req_key, TIMEOUT, payload)
+        await redis.publish(channel, payload)  # triggers WebSocket → frontend modal
 
+        # Poll for user response
+        deadline = asyncio.get_event_loop().time() + TIMEOUT
+        while asyncio.get_event_loop().time() < deadline:
+            resp = await redis.get(resp_key)
+            if resp:
+                await redis.delete(resp_key)
+                return json.loads(resp).get('approved', False)
+            await asyncio.sleep(POLL)
+        return False  # Safe default: deny on timeout
 
-def classify_scan_risk(
-    scanner_name: str,
-    *,
-    authenticated_scan: bool = False,
-    aggressive_fuzzing: bool = False,
-    crawl_depth: int = 1,
-    target_count: int = 1,
-) -> dict[str, Any]:
-    """Classify scan risk for policy enforcement."""
-    scanner = (scanner_name or "").strip().lower()
-
-    risk_score = 0
-    reasons: list[str] = []
-
-    if scanner in HIGH_RISK_SCANNERS:
-        risk_score += 45
-        reasons.append(f"high_risk_scanner:{scanner}")
-
-    if authenticated_scan:
-        risk_score += 20
-        reasons.append("authenticated_scan")
-
-    if aggressive_fuzzing:
-        risk_score += 20
-        reasons.append("aggressive_fuzzing")
-
-    if crawl_depth >= 4:
-        risk_score += 20
-        reasons.append(f"high_depth_crawling:{crawl_depth}")
-
-    if target_count >= 50:
-        risk_score += 15
-        reasons.append(f"wide_target_surface:{target_count}")
-
-    if risk_score >= 70:
-        level = "critical"
-    elif risk_score >= 45:
-        level = "high"
-    elif risk_score >= 20:
-        level = "medium"
-    else:
-        level = "low"
-
-    requires_manual_approval = (
-        scanner in HIGH_RISK_SCANNERS
-        or authenticated_scan
-        or aggressive_fuzzing
-        or crawl_depth >= 4
-    )
-
-    return {
-        "risk_level": level,
-        "risk_score": risk_score,
-        "requires_manual_approval": requires_manual_approval,
-        "reasons": reasons,
-    }
-
-
-def require_manual_approval(
-    *,
-    approved_by_human: bool,
-    risk_profile: dict[str, Any],
-) -> dict[str, Any]:
-    """Enforce manual approval for high-risk scan profiles."""
-    required = bool(risk_profile.get("requires_manual_approval", False))
-
-    if required and not approved_by_human:
-        return {
-            "allowed": False,
-            "reason": "manual_approval_required",
-            "risk_profile": risk_profile,
-        }
-
-    return {
-        "allowed": True,
-        "reason": "approved" if approved_by_human else "not_required",
-        "risk_profile": risk_profile,
-    }
-
-
-def validate_scan_execution(
-    *,
-    scanner_name: str,
-    approved_by_human: bool,
-    authenticated_scan: bool = False,
-    aggressive_fuzzing: bool = False,
-    crawl_depth: int = 1,
-    target_count: int = 1,
-    within_scope: bool = False,
-) -> dict[str, Any]:
-    """Final pre-execution policy decision for scan authorization."""
-    if not within_scope:
-        return {
-            "allowed": False,
-            "reason": "target_out_of_scope",
-            "risk_profile": None,
-        }
-
-    risk_profile = classify_scan_risk(
-        scanner_name,
-        authenticated_scan=authenticated_scan,
-        aggressive_fuzzing=aggressive_fuzzing,
-        crawl_depth=crawl_depth,
-        target_count=target_count,
-    )
-
-    approval = require_manual_approval(
-        approved_by_human=approved_by_human,
-        risk_profile=risk_profile,
-    )
-
-    if not approval["allowed"]:
-        return {
-            "allowed": False,
-            "reason": approval["reason"],
-            "risk_profile": risk_profile,
-        }
-
-    return {
-        "allowed": True,
-        "reason": "execution_authorized",
-        "risk_profile": risk_profile,
-    }
+    @staticmethod
+    async def respond(scan_id: UUID, approved: bool, user_id: UUID):
+        from backend.core.redis import get_redis
+        redis = await get_redis()
+        await redis.setex(
+            f'approval:resp:{scan_id}', 300,
+            json.dumps({'approved': approved, 'user_id': str(user_id)})
+        )

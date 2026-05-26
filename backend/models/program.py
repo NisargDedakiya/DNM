@@ -3,7 +3,7 @@ Program model representing a bug bounty program or target scope.
 """
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database.base import BaseModel
@@ -27,6 +27,23 @@ class Program(BaseModel):
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
+    )
+    handle: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    is_private: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    scope_json: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
 
     owner = relationship("User", back_populates="programs")

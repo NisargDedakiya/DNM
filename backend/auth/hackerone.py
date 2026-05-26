@@ -1,249 +1,157 @@
-"""
-Official HackerOne API client wrapper.
-
-Security posture:
-- uses only official API endpoints
-- accepts user-provided credentials (not persisted by default)
-- async-safe with timeout, retries, pagination
-- structured output parsing
-"""
-from __future__ import annotations
-
-import asyncio
-import base64
-import time
-from typing import Any
-
 import httpx
+import asyncio
+import logging
+from backend.core.config import settings
 
+logger = logging.getLogger(__name__)
 
-class HackerOneAuthError(RuntimeError):
-    """Raised when HackerOne authentication fails."""
+class HackerOneAPIError(Exception):
+    def __init__(self, message: str, status_code: int = 0):
+        super().__init__(message)
+        self.status_code = status_code
 
-
-class HackerOneAPIError(RuntimeError):
-    """Raised when HackerOne API request fails."""
-
+class HackerOneAuthError(HackerOneAPIError):
+    pass
 
 class HackerOneClient:
-    """Async HackerOne API client for program/report workflows."""
+    BASE = 'https://api.hackerone.com/v1'
 
-    BASE_URL = "https://api.hackerone.com/v1"
+    def __init__(self):
+        self._client: httpx.AsyncClient | None = None
 
-    def __init__(
-        self,
-        *,
-        username: str,
-        api_token: str,
-        timeout_seconds: float = 25.0,
-        max_retries: int = 2,
-        min_request_interval_seconds: float = 0.2,
-    ) -> None:
-        self.username = (username or "").strip()
-        self.api_token = (api_token or "").strip()
-        self.timeout_seconds = timeout_seconds
-        self.max_retries = max_retries
-        self.min_request_interval_seconds = max(0.0, min_request_interval_seconds)
-        self._rate_lock = asyncio.Lock()
-        self._last_request_at = 0.0
-
-        if not self.username or not self.api_token:
-            raise HackerOneAuthError("HackerOne credentials are required")
-
-    def _headers(self) -> dict[str, str]:
-        token = base64.b64encode(f"{self.username}:{self.api_token}".encode("utf-8")).decode("ascii")
-        return {
-            "Authorization": f"Basic {token}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        params: dict[str, Any] | None = None,
-        json_body: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        url = f"{self.BASE_URL}{path}"
-        last_exc: Exception | None = None
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                await self._wait_for_rate_window()
-                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                    response = await client.request(
-                        method,
-                        url,
-                        headers=self._headers(),
-                        params=params,
-                        json=json_body,
-                    )
-
-                if response.status_code in (401, 403):
-                    raise HackerOneAuthError("Invalid HackerOne credentials or insufficient API access")
-
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, dict):
-                    raise HackerOneAPIError("Unexpected HackerOne API response format")
-                return payload
-            except (HackerOneAuthError, HackerOneAPIError):
-                raise
-            except Exception as exc:  # pragma: no cover
-                last_exc = exc
-                if attempt < self.max_retries:
-                    await asyncio.sleep(0.5 * (attempt + 1))
-                    continue
-                raise HackerOneAPIError(f"HackerOne request failed: {exc}") from exc
-
-        raise HackerOneAPIError(f"HackerOne request failed: {last_exc}")
-
-    async def _wait_for_rate_window(self) -> None:
-        """Simple client-side pacing to reduce accidental burst traffic."""
-        if self.min_request_interval_seconds <= 0:
-            return
-
-        async with self._rate_lock:
-            now = time.monotonic()
-            delta = now - self._last_request_at
-            if delta < self.min_request_interval_seconds:
-                await asyncio.sleep(self.min_request_interval_seconds - delta)
-            self._last_request_at = time.monotonic()
-
-    async def authenticate(self) -> dict[str, Any]:
-        """Validate credentials by requesting first page of programs."""
-        payload = await self._request("GET", "/programs", params={"page[size]": 1, "page[number]": 1})
-        return {
-            "authenticated": True,
-            "program_count_hint": len(payload.get("data", [])),
-        }
-
-    async def get_programs(self, page_size: int = 100, max_pages: int = 20) -> list[dict[str, Any]]:
-        """Fetch all accessible programs with pagination."""
-        programs: list[dict[str, Any]] = []
-
-        for page in range(1, max_pages + 1):
-            payload = await self._request(
-                "GET",
-                "/programs",
-                params={"page[size]": max(1, min(page_size, 100)), "page[number]": page},
+    async def _get_client(self) -> httpx.AsyncClient:
+        if not self._client:
+            self._client = httpx.AsyncClient(
+                auth=(settings.hackerone_username, settings.hackerone_api_token),
+                headers={'Accept': 'application/json',
+                         'Content-Type': 'application/json'},
+                timeout=30.0
             )
-            batch = payload.get("data", []) or []
-            if not batch:
+        return self._client
+
+    async def _req(self, method: str, path: str, **kw) -> dict:
+        client = await self._get_client()
+        for attempt in range(3):
+            r = await client.request(method, self.BASE + path, **kw)
+            if r.status_code == 429:
+                wait = int(r.headers.get('Retry-After', '10'))
+                logger.warning(f'H1 rate limit — waiting {wait}s')
+                await asyncio.sleep(wait)
+                continue
+            if r.status_code == 401:
+                raise HackerOneAuthError('Invalid H1 credentials', 401)
+            if r.status_code == 403:
+                raise HackerOneAuthError('H1 Forbidden', 403)
+            if r.status_code not in (200, 201):
+                raise HackerOneAPIError(f'H1 error {r.status_code}: {r.text[:200]}', r.status_code)
+            return r.json()
+        raise HackerOneAPIError('H1 rate limit exceeded after retries', 429)
+
+    async def get_programs(self) -> list[dict]:
+        # Paginate through all programs — collect everything
+        results = []
+        cursor = None
+        while True:
+            params = {'page[size]': 100}
+            if cursor:
+                params['page[cursor]'] = cursor
+            data = await self._req('GET', '/programs', params=params)
+            for p in data.get('data', []):
+                attrs = p.get('attributes', {})
+                results.append({
+                    'handle': attrs.get('handle', ''),
+                    'name': attrs.get('name', ''),
+                    'policy': attrs.get('policy', ''),
+                    'offers_bounties': attrs.get('offers_bounties', False),
+                    'state': attrs.get('state', 'public_mode'),
+                    'is_private': attrs.get('state') not in ('public_mode', 'sandboxed'),
+                    'structured_scope_enabled': attrs.get('structured_scope_enabled', False),
+                })
+            links = data.get('links', {})
+            if not links.get('next'):
                 break
-            programs.extend(batch)
-
-            links = payload.get("links") or {}
-            if not links.get("next"):
+            # Extract cursor from next URL
+            import urllib.parse as up
+            parsed = up.urlparse(links['next'])
+            qs = up.parse_qs(parsed.query)
+            cursor = qs.get('page[cursor]', [None])[0]
+            if not cursor:
                 break
+        return results
 
-        return programs
-
-    async def get_structured_scope(self, handle: str, page_size: int = 100, max_pages: int = 20) -> list[dict[str, Any]]:
-        """Fetch structured scope for a program handle with pagination."""
-        safe_handle = (handle or "").strip()
-        if not safe_handle:
-            return []
-
-        scopes: list[dict[str, Any]] = []
-        path = f"/programs/{safe_handle}/structured_scopes"
-
-        for page in range(1, max_pages + 1):
-            payload = await self._request(
-                "GET",
-                path,
-                params={"page[size]": max(1, min(page_size, 100)), "page[number]": page},
-            )
-            batch = payload.get("data", []) or []
-            if not batch:
-                break
-            scopes.extend(batch)
-
-            links = payload.get("links") or {}
-            if not links.get("next"):
-                break
-
-        return scopes
-
-    async def submit_report(
-        self,
-        *,
-        title: str,
-        vulnerability_information: str,
-        impact: str,
-        severity_rating: str,
-        team_handle: str,
-        manual_approval: bool,
-        draft_only: bool = True,
-    ) -> dict[str, Any]:
-        """Prepare or submit a report. Never submits without manual approval.
-
-        If draft_only=True, returns a validated draft payload without submission.
-        """
-        if not manual_approval:
-            raise HackerOneAPIError("Manual approval is required before report submission")
-
-        body = {
-            "data": {
-                "type": "report",
-                "attributes": {
-                    "title": title.strip()[:255],
-                    "vulnerability_information": vulnerability_information.strip()[:8000],
-                    "impact": impact.strip()[:4000],
-                    "severity_rating": severity_rating.strip().lower(),
-                },
-                "relationships": {
-                    "team": {
-                        "data": {
-                            "type": "team",
-                            "id": team_handle.strip(),
-                        }
-                    }
-                },
+    async def get_structured_scope(self, handle: str) -> dict:
+        data = await self._req('GET', f'/programs/{handle}/structured_scopes')
+        in_scope = []
+        out_of_scope = []
+        no_auto_scan = False
+        for item in data.get('data', []):
+            attrs = item.get('attributes', {})
+            instruction = attrs.get('instruction', '') or ''
+            if 'no automated' in instruction.lower() or 'no auto' in instruction.lower():
+                no_auto_scan = True
+            entry = {
+                'asset_identifier': attrs.get('asset_identifier', ''),
+                'asset_type': attrs.get('asset_type', 'url'),
+                'eligible_for_bounty': attrs.get('eligible_for_bounty', False),
+                'max_severity': attrs.get('max_severity', 'critical'),
+                'instruction': instruction,
             }
-        }
+            if attrs.get('eligible_for_submission', True):
+                in_scope.append(entry)
+            else:
+                out_of_scope.append(entry)
+        return {'in_scope': in_scope, 'out_of_scope': out_of_scope, 'no_auto_scan': no_auto_scan}
 
-        if draft_only:
-            return {
-                "status": "draft_ready",
-                "manual_approval": True,
-                "submitted": False,
-                "payload": body,
-            }
+    async def get_program_policy(self, handle: str) -> dict:
+        return await self._req('GET', f'/programs/{handle}')
 
-        payload = await self._request("POST", "/reports", json_body=body)
-        report_data = payload.get("data", {})
-        attrs = report_data.get("attributes", {})
-        return {
-            "status": "submitted",
-            "manual_approval": True,
-            "submitted": True,
-            "report": {
-                "id": report_data.get("id"),
-                "title": attrs.get("title"),
-                "state": attrs.get("state"),
-                "severity": attrs.get("severity_rating", "unknown"),
-            },
-        }
+    async def submit_report(self, handle: str, report: dict) -> dict:
+        # Build the vulnerability_information from all report sections
+        vuln_info = report.get('description', '')
+        steps = report.get('steps_to_reproduce', [])
+        if steps:
+            vuln_info += '  ## Steps to Reproduce '
+            for i, s in enumerate(steps, 1):
+                vuln_info += f'{i}. {s} '
+        vuln_info += f'  ## Impact {report.get("impact", "")}'
+        vuln_info += f'  ## Remediation {report.get("remediation", "")}'
+        body = {'data': {'type': 'report', 'attributes': {
+            'team_handle': handle,
+            'title': report['title'],
+            'vulnerability_information': vuln_info,
+            'severity_rating': report.get('severity', 'medium'),
+            'impact': report.get('impact', ''),
+        }}}
+        if report.get('weakness_id'):
+            body['data']['attributes']['weakness_id'] = report['weakness_id']
+        result = await self._req('POST', '/reports', json=body)
+        return {'submission_id': str(result['data']['id']), 'state': result['data']['attributes']['state']}
 
-    async def get_my_reports(self, page_size: int = 100, max_pages: int = 20) -> list[dict[str, Any]]:
-        """Fetch authenticated user's reports with pagination."""
-        reports: list[dict[str, Any]] = []
-        for page in range(1, max_pages + 1):
-            payload = await self._request(
-                "GET",
-                "/reports",
-                params={"page[size]": max(1, min(page_size, 100)), "page[number]": page},
-            )
-            batch = payload.get("data", []) or []
-            if not batch:
-                break
-            reports.extend(batch)
+    async def get_my_reports(self) -> list[dict]:
+        data = await self._req('GET', '/reports?filter[reporter]=me&page[size]=100')
+        return [{'id': r['id'],
+                 'title': r['attributes']['title'],
+                 'state': r['attributes']['state'],
+                 'bounty': r['attributes'].get('bounty_amount')}
+                for r in data.get('data', [])]
 
-            links = payload.get("links") or {}
-            if not links.get("next"):
-                break
+    async def get_report_status(self, report_id: str) -> str:
+        data = await self._req('GET', f'/reports/{report_id}')
+        return data['data']['attributes']['state']
 
-        return reports
+    async def get_hacktivity(self, handle: str, limit: int = 20) -> list[dict]:
+        data = await self._req('GET',
+            f'/hacktivity?filter[program]={handle}&filter[disclosed]=true&page[size]={limit}')
+        return data.get('data', [])
+
+    async def get_weakness_types(self) -> list[dict]:
+        data = await self._req('GET', '/weakness_types')
+        return [{'id': w['id'], 'name': w['attributes']['name']}
+                for w in data.get('data', [])]
+
+    async def close(self):
+        if self._client:
+            await self._client.aclose()
+
+# Singleton
+h1_client = HackerOneClient()

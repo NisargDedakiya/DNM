@@ -10,7 +10,7 @@ from typing import List
 from arq import Worker, create_pool
 
 from backend.core.config import settings
-from backend.workers import tasks
+from backend.workers import tasks, scan_tasks
 
 
 @dataclass
@@ -21,6 +21,8 @@ class WorkerSettings:
         tasks.run_nuclei_scan_task,
         tasks.run_katana_scan_task,
         tasks.process_findings_task,
+        scan_tasks.run_full_scan,
+        scan_tasks.run_dalfox_scan,
     ]
     max_jobs: int = int(os.getenv("ARQ_MAX_JOBS", "5"))
     burst: bool = False

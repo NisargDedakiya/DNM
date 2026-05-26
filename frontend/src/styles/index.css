@@ -84,3 +84,23 @@
 .font-mono {
   font-family: 'Fira Code', 'JetBrains Mono', monospace;
 }
+
+html, body {
+  min-width: 1280px !important;
+}
+
+@keyframes border-pulse {
+  0%, 100% {
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.1);
+  }
+  50% {
+    border-color: rgba(239, 68, 68, 1);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
+}
+
+.animate-border-pulse {
+  animation: border-pulse 2s infinite ease-in-out;
+}
+

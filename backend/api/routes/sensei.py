@@ -498,5 +498,100 @@ async def health_check(
     }
 
 
+@router.get("/verify/{finding_id}")
+async def get_verification_wizard(
+    finding_id: str,
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    finding = db.query(Finding).filter(Finding.id == finding_id).first()
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+        
+    org_id = str(finding.organization_id) if finding.organization_id else ""
+    if not org_id:
+        from backend.models.program import Program
+        program = db.query(Program).filter(Program.id == finding.program_id).first()
+        org_id = str(program.organization_id) if program else ""
+        
+    vuln_type = getattr(finding, 'vulnerability_type', None) or "xss"
+    
+    workflow = await sensei_service.assist_manual_verification(
+        finding_id=finding_id,
+        vulnerability_type=vuln_type,
+        finding_description=finding.description or "",
+        organization_id=org_id
+    )
+    return workflow
+
+
+class ManualGuideRequest(Body):
+    bug_type: str
+    program_id: UUID
+
+
+class ExplainRequest(Body):
+    lines: list[str]
+    tool: str
+
+
+@router.post("/verify/{finding_id}")
+async def generate_verification_recipe(
+    finding_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from backend.ai.sensei.verification_wizard import verification_wizard
+    try:
+        res = await verification_wizard.generate(db, finding_id)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/manual-guide")
+async def generate_manual_guide(
+    body: Dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    bug_type = body.get("bug_type")
+    program_id = body.get("program_id")
+    if not bug_type or not program_id:
+        raise HTTPException(status_code=422, detail="bug_type and program_id are required")
+    from backend.ai.sensei.manual_guide import manual_guide
+    try:
+        res = await manual_guide.generate(db, bug_type, UUID(program_id))
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/explain")
+async def explain_tool_output(
+    body: Dict = Body(...),
+    current_user: User = Depends(get_current_user),
+):
+    lines = body.get("lines")
+    tool = body.get("tool")
+    if not isinstance(lines, list) or not tool:
+        raise HTTPException(status_code=422, detail="lines (list) and tool (str) are required")
+    from backend.ai.sensei.output_explainer import output_explainer
+    try:
+        res = await output_explainer.explain(lines, tool)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Make sure Finding model is imported (add at top if needed)
 from backend.models import Finding
+from backend.models.user import User
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
+
+

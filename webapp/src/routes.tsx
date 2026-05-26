@@ -14,6 +14,12 @@ import MainLayout from './components/layout/MainLayout';
 import useAuthStore from './stores/authStore';
 import ExposureGridView from './grid/ExposureGridView';
 
+// 4 New Core Screens
+import { WorkingStatusPage } from './pages/scans/WorkingStatusPage';
+import { VulnerabilitySectionPage } from './pages/findings/VulnerabilitySectionPage';
+import { ManualCheckPage } from './pages/findings/ManualCheckPage';
+import { ReportGenerationPage } from './pages/findings/ReportGenerationPage';
+
 
 // Auth guard — redirects unauthenticated users to /login
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -46,6 +52,12 @@ const AppRoutes: React.FC = () => {
         <Route path="hackerone" element={<HackerOnePage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="exposure-grid" element={<ExposureGridView />} />
+        
+        {/* New 4 Core Routes */}
+        <Route path="scans/:scanId/status" element={<WorkingStatusPage />} />
+        <Route path="programs/:programId/findings" element={<VulnerabilitySectionPage />} />
+        <Route path="findings/:findingId/manual-check" element={<ManualCheckPage />} />
+        <Route path="findings/:findingId/report" element={<ReportGenerationPage />} />
       </Route>
       
       {/* Fallback */}
@@ -55,3 +67,4 @@ const AppRoutes: React.FC = () => {
 };
 
 export default AppRoutes;
+

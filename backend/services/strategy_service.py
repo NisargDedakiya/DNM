@@ -50,6 +50,10 @@ class StrategyService:
             .where(Asset.organization_id == organization_id)
             .order_by(Asset.risk_score.desc(), Asset.last_seen.desc())
             .limit(limit),
+        )
+        assets = result.scalars().all()
+        targets: list[dict[str, Any]] = []
+
         for asset in assets:
             exposure_count = await self.db.scalar(
                 select(func.count(Exposure.id)).where(Exposure.asset_id == asset.id, Exposure.is_active == True),
@@ -231,43 +235,3 @@ class StrategyService:
             "follow_up_recommendations": recommendations,
             "advisory_note": "All campaign intelligence is filtered to the current organization and remains advisory.",
         }
-
-
-strategy_service = StrategyService
-import logging
-from typing import Dict, Any, List
-
-from backend.strategy.strategy_engine import strategy_engine
-from backend.strategy.prioritizer import prioritizer
-from backend.strategy.exposure_analyzer import exposure_analyzer
-
-logger = logging.getLogger(__name__)
-
-class StrategyService:
-    """Orchestrates AI strategy generation and contextual planning."""
-
-    async def generate_strategy(self, org_id: str, target: str) -> Dict[str, Any]:
-        """Fetch graph/findings context and ask Strategy Engine to build a plan."""
-        logger.info(f"Generating strategy for {target} in org {org_id}")
-        
-        mock_context = {"is_internet_facing": True, "has_auth_interface": True}
-        
-        # Prioritize first
-        score = prioritizer.score_target(mock_context)
-        mock_context["risk_score"] = score
-        
-        # Engine computes plan
-        strategy_doc = await strategy_engine.generate_hunt_strategy(target, org_id, mock_context)
-        return strategy_doc
-
-    async def analyze_recon_opportunities(self, org_id: str) -> List[Dict[str, Any]]:
-        """Identify what should be scanned next based on asset drift."""
-        logger.info("Analyzing recon opportunities globally")
-        # Example: compare yesterday's graph to today's
-        return [{"target": "api.example.com", "reason": "New ports exposed"}]
-
-    def recommend_hunt_focus(self, org_id: str) -> str:
-        """Top-level recommendation for the dashboard."""
-        return "Focus on API authentication endpoints due to recent infrastructure drift."
-
-strategy_service = StrategyService()

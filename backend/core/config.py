@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     hackerone_username: str = ""
     hackerone_api_token: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
 
     model_config = SettingsConfigDict(
         env_file=".env",

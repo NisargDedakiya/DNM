@@ -75,3 +75,7 @@ htmlcov/
 # Frontend dependencies
 frontend/node_modules/
 webapp/node_modules/
+
+# Scratch and generated outputs
+.gemini/
+login_response.json
