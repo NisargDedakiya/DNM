@@ -577,7 +577,7 @@ async def generate_manual_guide(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/explain")
+@router.post("/explain-output")
 async def explain_tool_output(
     body: Dict = Body(...),
     current_user: User = Depends(get_current_user),
@@ -592,6 +592,15 @@ async def explain_tool_output(
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bug-types")
+async def get_bug_types(
+    current_user: User = Depends(get_current_user),
+):
+    from backend.ai.sensei.manual_guide import SUPPORTED_BUG_TYPES
+    return SUPPORTED_BUG_TYPES
+
 
 
 

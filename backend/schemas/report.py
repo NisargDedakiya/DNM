@@ -19,6 +19,10 @@ class ReportUpdateRequest(BaseModel):
     cvss_score: Optional[float] = None
     quality_score: Optional[int] = None
     quality_breakdown: Optional[dict[str, Any]] = None
+    improvements: Optional[list[str]] = None
+
+class ReportSubmitRequest(BaseModel):
+    program_handle: str
 
 class ReportResponse(BaseModel):
     id: UUID
@@ -34,6 +38,7 @@ class ReportResponse(BaseModel):
     cvss_score: Optional[float] = None
     quality_score: int
     quality_breakdown: dict[str, Any]
+    improvements: list[str] = []
     submitted_at: Optional[datetime] = None
     platform_submission_id: Optional[str] = None
     outcome: Optional[str] = None

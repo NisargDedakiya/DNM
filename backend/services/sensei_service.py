@@ -10,10 +10,10 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from backend.ai.client import ClaudeClient
-from backend.ai.sensei.manual_guide import ManualGuide, VulnerabilityType
-from backend.ai.sensei.verification_wizard import VerificationWizard, VerificationStatus, EvidenceItem, EvidenceType
+from backend.ai.sensei.manual_guide import ManualGuide
+from backend.ai.sensei.verification_wizard import VerificationWizard
 from backend.ai.sensei.mistake_analyzer import MistakeAnalyzer
-from backend.ai.sensei.output_explainer import OutputExplainer, ToolType
+from backend.ai.sensei.output_explainer import OutputExplainer
 from backend.core.permissions import Permission
 from backend.models import Finding, Organization
 

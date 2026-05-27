@@ -131,14 +131,14 @@ class AITriageService:
                 
                 # Alert on critical + high confidence findings
                 if severity == FindingSeverity.critical and float(item.get('confidence', 0)) >= 0.7:
-                    await self._publish_alert(organization_id, item, finding.id)
+                    await self._publish_alert(db, organization_id, program_id, item, finding.id)
             except Exception as e:
                 logger.error(f'Failed to save triaged finding: {e}')
 
         logger.info(f'Triage complete: {len(saved)}/{len(raw_findings)} findings saved')
         return saved
 
-    async def _publish_alert(self, org_id: UUID, item: dict, finding_id: UUID):
+    async def _publish_alert(self, db: AsyncSession, org_id: UUID, program_id: UUID, item: dict, finding_id: UUID):
         try:
             from backend.core.redis import get_redis
             redis = await get_redis()
@@ -150,6 +150,15 @@ class AITriageService:
                 'confidence': item.get('confidence'),
                 'url': item.get('affected_url', ''),
             }))
+            
+            from backend.models.program import Program
+            p_stmt = select(Program.name).where(Program.id == program_id)
+            p_res = await db.execute(p_stmt)
+            program_name = p_res.scalars().first() or "unknown"
+
+            from backend.integrations.telegram_bot import telegram
+            await telegram.critical_alert(item['title'], program_name, item['severity'],
+                                           item['confidence'], item['affected_url'])
         except Exception as e:
             logger.error(f'Alert publish failed (non-fatal): {e}')
 

@@ -23,7 +23,7 @@ from backend.schemas.scan import (
 )
 from backend.services.scan_service import ScanService
 from backend.services.program_service import ProgramService
-from backend.services.queue_service import enqueue_dalfox_scan, enqueue_full_scan
+from backend.services.queue_service import enqueue_dalfox_scan, enqueue_full_scan, enqueue_full_scan_pipeline
 from backend.scanners.scanner_manager import ScannerManager
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,13 @@ class LaunchNucleiRequest(BaseModel):
 
 class LaunchDalfoxRequest(BaseModel):
     urls: list[str]
+
+
+class LaunchScanRequest(BaseModel):
+    """Request body for POST /{scan_id}/launch."""
+    targets: list[str]
+    tech_stack: str = "default"
+    stealth_mode: bool = False
 
 
 @router.post(
@@ -464,3 +471,60 @@ async def pause_scan(
     await db.refresh(scan)
     return {"status": "paused" if scan.status.value == "pending" else "running"}
 
+
+@router.post(
+    "/{scan_id}/launch",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Launch full scan pipeline",
+    description="Queue the full scan pipeline (nuclei → dalfox → chain detection) for a scan",
+)
+async def launch_full_scan(
+    scan_id: UUID,
+    body: LaunchScanRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Queue ``full_scan_pipeline`` ARQ task for *scan_id*.
+
+    The task will:
+    1. Run nuclei with tech-stack-specific templates
+    2. Run dalfox on any discovered endpoint URLs
+    3. Detect vulnerability chains via AI triage
+    4. Publish ``scan_complete`` to Redis alerts channel
+
+    Returns immediately with ``{queued: true, scan_id: str}``.
+    """
+    scan = await ScanService.get_scan_by_id(db, scan_id, current_user.id)
+    if not scan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+
+    program_service = ProgramService(db)
+    program = await program_service.get_program_by_id(scan.program_id, current_user.id)
+    if not program:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
+
+    org_id = program.organization_id or scan.organization_id
+    if not org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Program is missing organization context — cannot queue scan",
+        )
+
+    await enqueue_full_scan_pipeline(
+        scan_id=str(scan.id),
+        program_id=str(program.id),
+        org_id=str(org_id),
+        targets=body.targets,
+        tech_stack=body.tech_stack,
+        scope_json=program.scope_json or {},
+        stealth=body.stealth_mode,
+        created_by_id=str(current_user.id),
+    )
+    logger.info(
+        "Queued full_scan_pipeline for scan %s program %s by user %s",
+        scan.id,
+        program.id,
+        current_user.id,
+    )
+    return {"queued": True, "scan_id": str(scan.id)}

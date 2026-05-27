@@ -22,6 +22,7 @@ class WorkerSettings:
         tasks.run_katana_scan_task,
         tasks.process_findings_task,
         scan_tasks.run_full_scan,
+        scan_tasks.full_scan_pipeline,   # spec alias — same underlying function
         scan_tasks.run_dalfox_scan,
     ]
     max_jobs: int = int(os.getenv("ARQ_MAX_JOBS", "5"))

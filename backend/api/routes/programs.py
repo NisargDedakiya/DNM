@@ -26,7 +26,7 @@ from backend.models.team_member import TeamMember
 from backend.models.organization import Organization
 from backend.models.program import Program
 from pydantic import BaseModel
-from backend.services.bugcrowd_scraper import bugcrowd_scraper, BugcrowdError
+from backend.services.bugcrowd_scraper import bugcrowd_scraper, BugcrowdScrapeError, BugcrowdError
 
 logger = logging.getLogger(__name__)
 
@@ -334,11 +334,12 @@ async def preview_bugcrowd_program(
 ):
     """
     Preview Bugcrowd program scope without saving it to database.
+    Returns the AI-parsed scope dict for user to review before confirming.
     """
     try:
-        scope = await bugcrowd_scraper.fetch(payload.url)
+        scope = await bugcrowd_scraper.fetch_and_parse(payload.url)
         return scope
-    except BugcrowdError as exc:
+    except BugcrowdScrapeError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
@@ -382,7 +383,7 @@ async def add_bugcrowd_program(
             )
 
         # Scrape using Bugcrowd Scraper
-        result = await bugcrowd_scraper.fetch(payload.url)
+        result = await bugcrowd_scraper.fetch_and_parse(payload.url)
         
         handle = payload.url.rstrip('/').split('/')[-1]
         name = result.get('program_name') or handle
@@ -424,7 +425,7 @@ async def add_bugcrowd_program(
         await db.refresh(program)
         return ProgramResponse.model_validate(program)
         
-    except BugcrowdError as exc:
+    except BugcrowdScrapeError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),

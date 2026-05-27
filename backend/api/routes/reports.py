@@ -13,6 +13,7 @@ from backend.services.report_writer_service import report_writer
 from backend.schemas.report import (
     ReportGenerateRequest,
     ReportUpdateRequest,
+    ReportSubmitRequest,
     ReportResponse,
 )
 
@@ -115,6 +116,8 @@ async def update_report(
         report.quality_score = body.quality_score
     if body.quality_breakdown is not None:
         report.quality_breakdown = body.quality_breakdown
+    if body.improvements is not None:
+        report.improvements = body.improvements
 
     await db.commit()
     await db.refresh(report)
@@ -124,6 +127,7 @@ async def update_report(
 @router.post("/{id}/submit")
 async def submit_report(
     id: UUID,
+    body: ReportSubmitRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -140,15 +144,8 @@ async def submit_report(
         rbac = RBACService(db)
         await rbac.validate_workspace_access(current_user.id, finding.organization_id)
 
-    program = await db.get(Program, finding.program_id)
-    if not program or not program.handle:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Program has no valid HackerOne handle configured for submission"
-        )
-
     try:
-        submission_id = await report_writer.submit_to_hackerone(db, id, program.handle)
+        submission_id = await report_writer.submit_to_hackerone(db, id, body.program_handle)
         return {"submission_id": submission_id, "status": "submitted"}
     except ValueError as e:
         raise HTTPException(
@@ -159,4 +156,33 @@ async def submit_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Submission failed: {str(e)}"
+        )
+
+
+@router.post("/{id}/rescore", response_model=ReportResponse)
+async def rescore_report(
+    id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-score report quality based on current content and initial evidence.
+    """
+    report = await db.get(Report, id)
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    finding = await db.get(Finding, report.finding_id)
+    if finding and finding.organization_id:
+        from backend.core.permissions import RBACService
+        rbac = RBACService(db)
+        await rbac.validate_workspace_access(current_user.id, finding.organization_id)
+
+    try:
+        updated_report = await report_writer.rescore(db, id)
+        return updated_report
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to re-score report: {str(e)}"
         )

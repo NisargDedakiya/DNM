@@ -1,8 +1,10 @@
-import React from 'react';
-import { Card, Badge } from '../../components/ui/components';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, Badge, Button } from '../../components/ui/components';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
+import AddBugcrowdModal from '../../components/AddBugcrowdModal';
 // @ts-ignore - JSX implementation is intentionally shared across TS and JS entrypoints.
 import ExposureTimelineView from '../../timeline/ExposureTimelineView';
 // @ts-ignore - JSX implementation is intentionally shared across TS and JS entrypoints.
@@ -21,13 +23,15 @@ const severityData = [
 ];
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const organizationId = useAuthStore((state) => state.user?.organization_id || '');
+  const [showBugcrowdModal, setShowBugcrowdModal] = useState(false);
   const highRiskAssets = severityData.filter((entry) => entry.name === 'Critical' || entry.name === 'High');
   const activeHunts = severityData.filter((entry) => entry.name !== 'Info');
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Program Overview</h1>
           <p className="text-gray-400">Total program coverage and vulnerability statistics.</p>
@@ -37,6 +41,73 @@ const Dashboard: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-primary mr-2 animate-ping"></span>
             Sync Active
           </Badge>
+        </div>
+      </div>
+
+      {/* Three Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* Start New Hunt */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <button
+            onClick={() => navigate('/app/hackerone')}
+            className="relative group h-full"
+          >
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-primary to-secondary rounded-xl opacity-0 group-hover:opacity-100 blur-[2px] transition-opacity duration-500"></div>
+            <div className="relative glass-card p-6 h-full flex flex-col items-center justify-center text-center hover:border-transparent transition-colors cursor-pointer">
+              <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center mb-4 group-hover:bg-primary/30 transition-colors">
+                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-1">Start New Hunt</h3>
+              <p className="text-sm text-gray-400">Sync HackerOne programs and begin reconnaissance</p>
+            </div>
+          </button>
+        </motion.div>
+
+        {/* Previous Programs */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <button
+            onClick={() => navigate('/app/bugcrowd')}
+            className="relative group h-full"
+          >
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-secondary to-primary rounded-xl opacity-0 group-hover:opacity-100 blur-[2px] transition-opacity duration-500"></div>
+            <div className="relative glass-card p-6 h-full flex flex-col items-center justify-center text-center hover:border-transparent transition-colors cursor-pointer">
+              <div className="w-12 h-12 rounded-lg bg-secondary/20 flex items-center justify-center mb-4 group-hover:bg-secondary/30 transition-colors">
+                <svg className="w-6 h-6 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-1">Previous Programs</h3>
+              <p className="text-sm text-gray-400">View and manage existing bug bounty programs</p>
+            </div>
+          </button>
+        </motion.div>
+
+        {/* Add Bugcrowd Program */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <button
+            onClick={() => setShowBugcrowdModal(true)}
+            className="relative group h-full"
+          >
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-orange-500 to-primary rounded-xl opacity-0 group-hover:opacity-100 blur-[2px] transition-opacity duration-500"></div>
+            <div className="relative glass-card p-6 h-full flex flex-col items-center justify-center text-center hover:border-transparent transition-colors cursor-pointer">
+              <div className="w-12 h-12 rounded-lg bg-orange-500/20 flex items-center justify-center mb-4 group-hover:bg-orange-500/30 transition-colors">
+                <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-1">Add Bugcrowd</h3>
+              <p className="text-sm text-gray-400">Import a new Bugcrowd engagement</p>
+            </div>
+          </button>
+        </motion.div>
+      </div>
+
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-2">Activity Overview</h2>
+          <p className="text-gray-400">Program vulnerability statistics</p>
         </div>
       </div>
 
@@ -183,6 +254,16 @@ const Dashboard: React.FC = () => {
           <SystemHealthDashboard organizationId={organizationId} />
         </motion.div>
       )}
+
+      {/* Bugcrowd Modal */}
+      <AddBugcrowdModal
+        isOpen={showBugcrowdModal}
+        onClose={() => setShowBugcrowdModal(false)}
+        onSuccess={() => {
+          // Reload programs or navigate to bugcrowd page
+          window.location.reload();
+        }}
+      />
     </div>
   );
 };

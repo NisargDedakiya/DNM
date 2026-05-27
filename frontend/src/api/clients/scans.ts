@@ -77,3 +77,19 @@ export async function pauseScan(scanId: string): Promise<{ status: string }> {
   return r.data
 }
 
+export async function respondApproval(scanId: string, approved: boolean): Promise<{ status: string }> {
+  const r = await api.post(`/scans/${scanId}/respond`, { approved })
+  return r.data
+}
+
+export interface LaunchScanRequest {
+  targets: string[]
+  tech_stack?: string
+  stealth_mode?: boolean
+}
+
+export async function launchFullScan(scanId: string, req: LaunchScanRequest): Promise<{ queued: boolean; scan_id: string }> {
+  const r = await api.post(`/scans/${scanId}/launch`, req)
+  return r.data
+}
+

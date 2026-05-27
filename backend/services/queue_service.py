@@ -57,3 +57,34 @@ async def enqueue_full_scan(scan_id: str, program_id: str, org_id: str, targets:
 async def enqueue_dalfox_scan(scan_id: str, program_id: str, org_id: str, urls: List[str], scope_json: dict) -> str:
     await _enqueue_task("run_dalfox_scan", scan_id, program_id, org_id, urls, scope_json)
     return scan_id
+
+
+async def enqueue_full_scan_pipeline(
+    scan_id: str,
+    program_id: str,
+    org_id: str,
+    targets: List[str],
+    tech_stack: str,
+    scope_json: dict,
+    stealth: bool = False,
+    created_by_id: Optional[str] = None,
+) -> str:
+    """
+    Enqueue a full scanner pipeline (nuclei → dalfox → chain detection) via ARQ.
+    Mirrors enqueue_full_scan but uses the ``full_scan_pipeline`` task name and
+    forwards the optional ``created_by_id`` for attribution.
+
+    Returns the scan_id so callers can poll status.
+    """
+    await _enqueue_task(
+        "full_scan_pipeline",
+        scan_id,
+        program_id,
+        org_id,
+        targets,
+        tech_stack,
+        scope_json,
+        stealth,
+        created_by_id,
+    )
+    return scan_id

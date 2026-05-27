@@ -32,6 +32,7 @@ class Report(BaseModel):
     cvss_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     quality_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     quality_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    improvements: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     platform_submission_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(100), nullable=True)
