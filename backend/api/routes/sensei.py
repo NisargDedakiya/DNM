@@ -6,15 +6,21 @@ All endpoints require JWT authentication and organization context.
 
 import logging
 from typing import Dict, Optional, List
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from pydantic import BaseModel
 
 from backend.auth.dependencies import get_current_user, verify_organization
-from backend.auth.jwt_handler import verify_jwt_token
 from backend.core.permissions import Permission, require_permission
 from backend.services.sensei_service import SenseiService
 from backend.ai.client import ClaudeClient
 from backend.database.session import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.models import Finding
+from backend.models.user import User
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +62,7 @@ async def get_verification_guide(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Extract request parameters
         vulnerability_type = request.get("vulnerability_type", "").lower()
@@ -129,7 +135,7 @@ async def start_verification_workflow(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Extract parameters
         finding_id = request.get("finding_id")
@@ -218,7 +224,7 @@ async def analyze_rejection(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Extract parameters
         rejection_reason = request.get("rejection_reason", "")
@@ -292,7 +298,7 @@ async def explain_tool_output(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Extract parameters
         tool_type = request.get("tool_type", "").lower()
@@ -360,7 +366,7 @@ async def explain_finding(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Get finding from database
         finding = db.query(Finding).filter(
@@ -444,7 +450,7 @@ async def analyze_report_quality(
     """
     try:
         # Verify organization
-        verify_organization(current_user, organization_id, db)
+        await verify_organization(current_user, organization_id, db)
         
         # Extract parameters
         report_data = request.get("report_data", {})
@@ -525,12 +531,12 @@ async def get_verification_wizard(
     return workflow
 
 
-class ManualGuideRequest(Body):
+class ManualGuideRequest(BaseModel):
     bug_type: str
     program_id: UUID
 
 
-class ExplainRequest(Body):
+class ExplainRequest(BaseModel):
     lines: list[str]
     tool: str
 
@@ -588,10 +594,7 @@ async def explain_tool_output(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Make sure Finding model is imported (add at top if needed)
-from backend.models import Finding
-from backend.models.user import User
-from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
+
+
 
 

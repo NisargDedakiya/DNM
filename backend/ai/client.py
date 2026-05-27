@@ -78,3 +78,31 @@ async def generate_report(prompt: str) -> dict:
     Returns provider raw JSON; callers should extract `completion` text.
     """
     return await generate_completion(prompt)
+
+
+class ClaudeClient:
+    def __init__(self):
+        self.api_key = settings.anthropic_api_key
+
+    async def create_message(
+        self,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        system: str,
+        messages: list[dict]
+    ) -> str:
+        if not self.api_key:
+            return "Anthropic API key not configured."
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic(api_key=self.api_key)
+        response = await client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=messages
+        )
+        if response.content:
+            return response.content[0].text
+        return ""

@@ -13,53 +13,59 @@ class ClaudeAPIError(Exception):
 class ClaudeClient:
     MODEL      = 'claude-sonnet-4-20250514'
     MAX_TOKENS = 4096
-    RETRIES    = [2, 4, 8, 16]  # backoff seconds
+    BACKOFF    = [2, 4, 8, 16]  # retry wait seconds
 
     def __init__(self):
-        self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._anthropic = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    async def analyze(self, prompt: str, system: str,
-                      max_tokens: int | None = None) -> str:
+    async def analyze(self, prompt: str, system: str, max_tokens: int | None = None) -> str:
         mt = max_tokens or self.MAX_TOKENS
-        for i, delay in enumerate(self.RETRIES):
+        last_error: Exception | None = None
+        for delay in self.BACKOFF:
             try:
-                resp = await self._client.messages.create(
-                    model=self.MODEL, max_tokens=mt, system=system,
+                resp = await self._anthropic.messages.create(
+                    model=self.MODEL,
+                    max_tokens=mt,
+                    system=system,
                     messages=[{'role': 'user', 'content': prompt}]
                 )
                 return resp.content[0].text
-            except anthropic.RateLimitError:
-                if i == len(self.RETRIES)-1:
-                    raise ClaudeAPIError('Rate limit exceeded')
-                logger.warning(f'Rate limited, retrying in {delay}s')
+            except anthropic.RateLimitError as e:
+                last_error = e
+                logger.warning(f'Claude rate limited — waiting {delay}s')
                 await asyncio.sleep(delay)
             except anthropic.APIError as e:
-                raise ClaudeAPIError(str(e))
+                raise ClaudeAPIError(f'Anthropic API error: {e}')
+        raise ClaudeAPIError(f'Max retries exceeded: {last_error}')
 
     async def analyze_json(self, prompt: str, system: str) -> dict | list:
-        sys_with_json = system.strip() + '  IMPORTANT: Return ONLY valid JSON. No markdown fences. No preamble.'
+        # Append strong JSON instruction
+        sys_json = system.strip() + '  IMPORTANT: Return ONLY valid JSON. No markdown. No backticks. No explanation.'
         for attempt in range(2):
             try:
-                text = await self.analyze(prompt, sys_with_json)
+                text = await self.analyze(prompt, sys_json)
                 text = text.strip()
-                # Strip markdown fences if model adds them anyway
+                # Strip markdown code fences if model adds them
                 if text.startswith('```'):
                     lines = text.split(' ')
-                    text = ' '.join(lines[1:-1] if lines[-1]=='```' else lines[1:])
+                    end = -1 if lines[-1].strip() == '```' else len(lines)
+                    text = ' '.join(lines[1:end])
                 return json.loads(text.strip())
             except json.JSONDecodeError:
                 if attempt == 0:
-                    prompt = prompt + '  Return ONLY a valid JSON object or array. Nothing else.'
+                    prompt = prompt + '  You MUST return ONLY a JSON object or array. No text before or after.'
                 else:
-                    raise ClaudeAPIError('Could not parse Claude response as JSON')
+                    raise ClaudeAPIError('Claude response could not be parsed as JSON after retry')
 
     async def stream(self, prompt: str, system: str) -> AsyncGenerator[str, None]:
-        async with self._client.messages.stream(
-            model=self.MODEL, max_tokens=self.MAX_TOKENS, system=system,
+        async with self._anthropic.messages.stream(
+            model=self.MODEL,
+            max_tokens=self.MAX_TOKENS,
+            system=system,
             messages=[{'role': 'user', 'content': prompt}]
-        ) as s:
-            async for chunk in s.text_stream:
-                yield chunk
+        ) as stream:
+            async for text_chunk in stream.text_stream:
+                yield text_chunk
 
-# Singleton — import this everywhere
+# Singleton — import from here everywhere
 claude = ClaudeClient()

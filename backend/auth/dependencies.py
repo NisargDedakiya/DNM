@@ -23,3 +23,32 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+async def verify_organization(user: User, organization_id: str, db: AsyncSession) -> None:
+    from uuid import UUID
+    from sqlalchemy import and_
+    from backend.models.team_member import TeamMember
+
+    try:
+        org_uuid = UUID(organization_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid organization ID format"
+        )
+
+    stmt = select(TeamMember).where(
+        and_(
+            TeamMember.user_id == user.id,
+            TeamMember.organization_id == org_uuid,
+            TeamMember.is_active == True
+        )
+    )
+    res = await db.execute(stmt)
+    member = res.scalars().first()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this organization"
+        )

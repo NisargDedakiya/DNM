@@ -1,10 +1,12 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, UTC
 from uuid import UUID
 
-TIMEOUT = 3600  # 1 hour
-POLL    = 5     # seconds between polls
+logger = logging.getLogger(__name__)
+TIMEOUT = 3600  # 1 hour — user has 1 hour to approve
+POLL_INTERVAL = 5  # seconds between checks
 
 class ApprovalGate:
 
@@ -12,37 +14,44 @@ class ApprovalGate:
     async def request(
         scan_id: UUID,
         message: str,
-        targets: list[str],
-        tool: str,
-        org_id: UUID,
+        targets_preview: list[str],
+        tool_name: str,
+        organization_id: UUID,
     ) -> bool:
         from backend.core.redis import get_redis
         redis = await get_redis()
 
         req_key  = f'approval:req:{scan_id}'
         resp_key = f'approval:resp:{scan_id}'
-        channel  = f'alerts:{org_id}'  # same channel Phase 16 monitoring uses
+        # Use same channel format as Phase 16 WebSocket alerts
+        channel  = f'alerts:{organization_id}'
 
         payload = json.dumps({
             'event': 'approval_request',
             'scan_id': str(scan_id),
             'message': message,
-            'targets_preview': targets[:5],
-            'total_targets': len(targets),
-            'tool': tool,
+            'targets_preview': targets_preview[:5],
+            'total_targets': len(targets_preview),
+            'tool': tool_name,
             'requested_at': datetime.now(UTC).isoformat(),
         })
         await redis.setex(req_key, TIMEOUT, payload)
-        await redis.publish(channel, payload)  # triggers WebSocket → frontend modal
+        await redis.publish(channel, payload)
 
-        # Poll for user response
-        deadline = asyncio.get_event_loop().time() + TIMEOUT
-        while asyncio.get_event_loop().time() < deadline:
+        # Poll until user responds or timeout
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + TIMEOUT
+        while loop.time() < deadline:
             resp = await redis.get(resp_key)
             if resp:
                 await redis.delete(resp_key)
-                return json.loads(resp).get('approved', False)
-            await asyncio.sleep(POLL)
+                data = json.loads(resp)
+                approved = data.get('approved', False)
+                logger.info(f"Scan {scan_id} {'approved' if approved else 'denied'}")
+                return approved
+            await asyncio.sleep(POLL_INTERVAL)
+
+        logger.warning(f'Scan {scan_id} approval timed out — defaulting to denied')
         return False  # Safe default: deny on timeout
 
     @staticmethod
@@ -50,6 +59,11 @@ class ApprovalGate:
         from backend.core.redis import get_redis
         redis = await get_redis()
         await redis.setex(
-            f'approval:resp:{scan_id}', 300,
-            json.dumps({'approved': approved, 'user_id': str(user_id)})
+            f'approval:resp:{scan_id}',
+            300,  # response valid for 5 minutes
+            json.dumps({
+                'approved': approved,
+                'user_id': str(user_id),
+                'responded_at': datetime.now(UTC).isoformat()
+            })
         )

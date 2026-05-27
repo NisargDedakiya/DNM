@@ -71,9 +71,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.warning("Redis initialization skipped: %s", exc)
 
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from backend.workers.scheduler import execute_monitoring_scheduler
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(execute_monitoring_scheduler, 'interval', minutes=5, id='monitoring')
+    scheduler.start()
+
     yield
 
     # Shutdown
+    try:
+        scheduler.shutdown()
+    except Exception as exc:
+        logger.warning("Scheduler shutdown skipped: %s", exc)
+
     try:
         await close_redis()
     except Exception as exc:

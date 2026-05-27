@@ -52,8 +52,8 @@ services:
 
   frontend:
     build:
-      context: frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
     restart: unless-stopped
     networks:
       - internal

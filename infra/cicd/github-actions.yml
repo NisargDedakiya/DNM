@@ -23,12 +23,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
       - name: Install frontend dependencies
-        working-directory: webapp
+        working-directory: frontend
         run: npm ci
       - name: Backend tests
         run: pytest -q
       - name: Frontend lint
-        working-directory: webapp
+        working-directory: frontend
         run: npm run lint
 
   docker-build:
