@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Badge, Button, Spinner } from '../../components/ui/components';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 
 interface ScheduledHunt {
   id: string;
@@ -11,9 +11,8 @@ interface ScheduledHunt {
 }
 
 export default function SchedulerPage() {
-  const { user } = useAuthStore();
-  const orgId = user?.organization_id || localStorage.getItem('org_id') || 'demo-org';
-  const token = localStorage.getItem('auth_token');
+  const { activeOrgId, accessToken: token } = useAuthStore();
+  const orgId = activeOrgId || 'demo-org';
 
   const [hunts, setHunts] = useState<ScheduledHunt[]>([]);
   const [target, setTarget] = useState('example.com');

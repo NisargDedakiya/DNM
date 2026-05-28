@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Badge, Card, EmptyState, Spinner } from '../components/ui/components';
-import websocket from '../services/websocket';
+import websocket from '../realtime/websocketManager';
 import { getExposureRegressions } from '../api/clients/timeline';
 
 const ExposureRegressionAlerts = ({ organizationId, asset }) => {
@@ -28,13 +28,6 @@ const ExposureRegressionAlerts = ({ organizationId, asset }) => {
 
   useEffect(() => {
     if (!organizationId) return undefined;
-
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('authToken');
-    const websocketOrgId = localStorage.getItem('org_id') || localStorage.getItem('organizationId') || organizationId;
-
-    if (token && websocketOrgId && !websocket.getStatus().isConnected) {
-      websocket.connect(token, websocketOrgId).catch(() => undefined);
-    }
 
     return websocket.on('message', (event) => {
       const eventType = event?.type || event?.event_type;

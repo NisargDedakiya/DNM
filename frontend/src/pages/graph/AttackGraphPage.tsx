@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, Badge, Button, Spinner } from '../../components/ui/components';
 import { motion, AnimatePresence } from 'framer-motion';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 import { getIntelMap, traverseNode, getRiskPropagation } from '../../api/clients/graph';
 import AttackPathVisualizer from '../../attack/AttackPathVisualizer';
 import BlastRadiusPanel from '../../attack/BlastRadiusPanel';
@@ -29,9 +29,8 @@ interface Edge {
 }
 
 export default function AttackGraphPage() {
-  const { user } = useAuthStore();
-  const orgId = user?.organization_id || localStorage.getItem('org_id') || 'demo-org';
-  const token = localStorage.getItem('auth_token');
+  const { user, activeOrgId, accessToken: token } = useAuthStore();
+  const orgId = activeOrgId || 'demo-org';
 
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);

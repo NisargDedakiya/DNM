@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import api from '../api/client'
-import useAuthStore from '../stores/authStore'
-import useRealtimeStore from '../store/useRealtimeStore'
+import useAuthStore from '../state/auth'
+import useRealtimeStore from '../realtime/realtimeStore'
 import WorkerGrid from './WorkerGrid'
 import AIMetricsPanel from './AIMetricsPanel'
 import RealtimeEventMonitor from './RealtimeEventMonitor'
@@ -14,10 +14,10 @@ const toneForScore = (score) => {
 }
 
 const SystemHealthDashboard = ({ organizationId: organizationIdProp = null }) => {
-  const currentUser = useAuthStore((state) => state.user)
+  const { user: currentUser, activeOrgId } = useAuthStore()
   const isConnected = useRealtimeStore((state) => state.isConnected)
   const recentEvents = useRealtimeStore((state) => state.recentEvents)
-  const organizationId = organizationIdProp || currentUser?.organization_id || ''
+  const organizationId = organizationIdProp || activeOrgId || ''
 
   const [health, setHealth] = useState(null)
   const [metrics, setMetrics] = useState(null)

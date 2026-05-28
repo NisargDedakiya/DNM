@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, Badge, Button } from '../../components/ui/components';
 import { motion } from 'framer-motion';
 import { getCopilotChat, investigateEntity } from '../../api/clients/copilot';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 
 interface Message {
   id: string
@@ -12,7 +12,7 @@ interface Message {
 }
 
 const CopilotPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, activeOrgId } = useAuthStore();
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ const CopilotPage: React.FC = () => {
 
   const handleQuery = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || !user?.organization_id) return;
+    if (!query.trim() || !activeOrgId) return;
 
     try {
       setLoading(true);

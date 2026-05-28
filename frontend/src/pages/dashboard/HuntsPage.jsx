@@ -5,12 +5,11 @@ import HuntStrategyDashboard from '../../strategy/HuntStrategyDashboard';
 import AdaptiveReconPanel from '../../strategy/AdaptiveReconPanel';
 import CampaignVisualizer from '../../strategy/CampaignVisualizer';
 import TargetPriorityMap from '../../strategy/TargetPriorityMap';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 
 export default function HuntsPage() {
-  const { user } = useAuthStore();
-  const orgId = user?.organization_id || localStorage.getItem('org_id') || 'demo-org';
-  const token = localStorage.getItem('auth_token');
+  const { accessToken: token, activeOrgId } = useAuthStore();
+  const orgId = activeOrgId || 'demo-org';
 
   // Input states for generating strategy plan
   const [programName, setProgramName] = useState('Shopify Bounty Program');

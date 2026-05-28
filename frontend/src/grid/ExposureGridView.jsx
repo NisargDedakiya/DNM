@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import useAuthStore from '../stores/authStore';
+import useAuthStore from '../state/auth';
 import api from '../api/client';
 
 import AutonomousMonitoringPanel from './AutonomousMonitoringPanel';
@@ -8,9 +8,8 @@ import ExposureMutationFeed from './ExposureMutationFeed';
 import AnomalyAlertPanel from './AnomalyAlertPanel';
 
 export default function ExposureGridView() {
-  const user = useAuthStore((state) => state.user);
-  const token = useAuthStore((state) => state.accessToken);
-  const organizationId = user?.organization_id || '';
+  const { user, accessToken: token, activeOrgId } = useAuthStore();
+  const organizationId = activeOrgId || '';
 
   const [status, setStatus] = useState({
     grid_health: 'healthy',

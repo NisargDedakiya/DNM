@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import api from '../api/client'
-import useAuthStore from '../stores/authStore'
-import useRealtimeStore from '../store/useRealtimeStore'
+import useAuthStore from '../state/auth'
+import useRealtimeStore from '../realtime/realtimeStore'
 import WebSocketMetrics from './WebSocketMetrics'
 import AIUsageOptimizer from './AIUsageOptimizer'
 import GraphPerformancePanel from './GraphPerformancePanel'
@@ -14,10 +14,10 @@ const cardTone = (value) => {
 }
 
 const PerformanceDashboard = ({ organizationId: organizationIdProp = null }) => {
-  const currentUser = useAuthStore((state) => state.user)
+  const { user: currentUser, activeOrgId } = useAuthStore()
   const isConnected = useRealtimeStore((state) => state.isConnected)
   const recentEvents = useRealtimeStore((state) => state.recentEvents)
-  const organizationId = organizationIdProp || currentUser?.organization_id || ''
+  const organizationId = organizationIdProp || activeOrgId || ''
 
   const [overview, setOverview] = useState(null)
   const [websocket, setWebsocket] = useState(null)

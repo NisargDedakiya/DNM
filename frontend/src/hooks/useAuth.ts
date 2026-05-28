@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { login as apiLogin, logout as apiLogout } from '../api/clients/auth'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore } from '../state/auth'
 
 export function useAuth() {
   const setToken = useAuthStore((s) => s.setToken)

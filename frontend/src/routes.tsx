@@ -1,82 +1,58 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import LandingPage from './pages/landing/LandingPage';
-import LoginPage from './pages/auth/LoginPage';
-import Dashboard from './pages/dashboard/Dashboard';
-import CopilotPage from './pages/copilot/CopilotPage';
-import SenseiAIPage from './pages/sensei/SenseiAIPage';
-import TasksPage from './pages/tasks/TasksPage';
-import GuidePage from './pages/guide/GuidePage';
-import BugcrowdPage from './pages/scanners/BugcrowdPage';
-import HackerOnePage from './pages/scanners/HackerOnePage';
-import ReportsPage from './pages/reports/ReportsPage';
-import MainLayout from './components/layout/MainLayout';
-import useAuthStore from './stores/authStore';
-import ExposureGridView from './grid/ExposureGridView';
-import HuntsPage from './pages/dashboard/HuntsPage';
-import ObservabilityDashboard from './pages/dashboard/ObservabilityDashboard';
-import AttackGraphPage from './pages/graph/AttackGraphPage';
-import FindingsWorkspacePage from './pages/findings/FindingsWorkspacePage';
-import SchedulerPage from './pages/scheduler/SchedulerPage';
-
-// 4 New Core Screens
-import { WorkingStatusPage } from './pages/scans/WorkingStatusPage';
-import { VulnerabilitySectionPage } from './pages/findings/VulnerabilitySectionPage';
-import { ManualCheckPage } from './pages/findings/ManualCheckPage';
-import { ReportGenerationPage } from './pages/findings/ReportGenerationPage';
-
-
-// Auth guard — redirects unauthenticated users to /login
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-};
+import React from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import LandingPage from './pages/landing/LandingPage'
+import LoginPage from './pages/auth/LoginPage'
+import OrgSelectionPage from './pages/auth/OrgSelectionPage'
+import Dashboard from './pages/dashboard/Dashboard'
+import ProgramsPage from './pages/programs/ProgramsPage'
+import FindingsWorkspacePage from './pages/findings/FindingsWorkspacePage'
+import AttackGraphPage from './pages/graph/AttackGraphPage'
+import InvestigationsPage from './pages/investigations/InvestigationsPage'
+import ReportsPage from './pages/reports/ReportsPage'
+import SenseiAIPage from './pages/sensei/SenseiAIPage'
+import ExposureGridView from './grid/ExposureGridView'
+import TasksPage from './pages/tasks/TasksPage'
+import OrganizationsPage from './pages/organizations/OrganizationsPage'
+import SchedulerPage from './pages/scheduler/SchedulerPage'
+import MainLayout from './components/layout/MainLayout'
+import ProtectedRoute from './routes/ProtectedRoute'
 
 const AppRoutes: React.FC = () => {
-  const { isAuthenticated } = useAuthStore();
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/app" replace /> : <LoginPage />
-      } />
+      <Route path="/login" element={<LoginPage />} />
       
-      {/* Protected Dashboard Routes */}
+      {/* Organization Selection Guard */}
+      <Route path="/org-select" element={
+        <ProtectedRoute>
+          <OrgSelectionPage />
+        </ProtectedRoute>
+      } />
+
+      {/* Protected Cyber Operations Layout */}
       <Route path="/app" element={
         <ProtectedRoute>
           <MainLayout />
         </ProtectedRoute>
       }>
         <Route index element={<Dashboard />} />
-        <Route path="ai-copilot" element={<CopilotPage />} />
-        <Route path="chat" element={<CopilotPage />} />
-        <Route path="sensei-ai" element={<SenseiAIPage />} />
-        <Route path="tasks" element={<TasksPage />} />
-        <Route path="manual-guide" element={<GuidePage />} />
-        <Route path="observability" element={<ObservabilityDashboard />} />
-        <Route path="hunts" element={<HuntsPage />} />
-        <Route path="graph" element={<AttackGraphPage />} />
+        <Route path="programs" element={<ProgramsPage />} />
+        <Route path="monitoring" element={<SchedulerPage />} />
         <Route path="findings" element={<FindingsWorkspacePage />} />
-        <Route path="scheduler" element={<SchedulerPage />} />
-        <Route path="bugcrowd" element={<BugcrowdPage />} />
-        <Route path="hackerone" element={<HackerOnePage />} />
+        <Route path="graph" element={<AttackGraphPage />} />
+        <Route path="investigations" element={<InvestigationsPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="exposure-grid" element={<ExposureGridView />} />
-
-        
-        {/* New 4 Core Routes */}
-        <Route path="scans/:scanId/status" element={<WorkingStatusPage />} />
-        <Route path="programs/:programId/findings" element={<VulnerabilitySectionPage />} />
-        <Route path="findings/:findingId/manual-check" element={<ManualCheckPage />} />
-        <Route path="findings/:findingId/report" element={<ReportGenerationPage />} />
+        <Route path="strategy" element={<SenseiAIPage />} />
+        <Route path="threat-intelligence" element={<ExposureGridView />} />
+        <Route path="marketplace" element={<TasksPage />} />
+        <Route path="settings" element={<OrganizationsPage />} />
       </Route>
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-  );
-};
+  )
+}
 
-export default AppRoutes;
-
+export default AppRoutes

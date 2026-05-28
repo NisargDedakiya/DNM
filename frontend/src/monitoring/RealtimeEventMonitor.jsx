@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import api from '../api/client'
-import useRealtimeStore from '../store/useRealtimeStore'
+import useRealtimeStore from '../realtime/realtimeStore'
 
 const RealtimeEventMonitor = ({ organizationId, healthSnapshot = null, metricsSnapshot = null }) => {
   const recentEvents = useRealtimeStore((state) => state.recentEvents)

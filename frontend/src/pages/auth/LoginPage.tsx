@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/components';
 import { login } from '../../api/clients/auth';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 import EnterpriseLogin from '../../auth/EnterpriseLogin';
 
 const LoginPage: React.FC = () => {
@@ -23,7 +23,7 @@ const LoginPage: React.FC = () => {
       const data = await login({ username, password });
       setToken(data.access_token);
       if (data.user) setUser(data.user);
-      navigate('/app');
+      navigate('/org-select');
     } catch (err: any) {
       const msg = err?.response?.data?.detail || 'Authentication failed. Check credentials.';
       setError(msg);

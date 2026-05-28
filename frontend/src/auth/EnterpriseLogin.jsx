@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import api from '../api/client'
-import useAuthStore from '../stores/authStore'
+import useAuthStore from '../state/auth'
 
 const providers = [
   { value: 'saml', label: 'SAML SSO' },

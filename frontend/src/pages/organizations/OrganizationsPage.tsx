@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Badge, Button } from '../../components/ui/components';
 import { motion } from 'framer-motion';
 import { listOrganizations, createOrganization, listMembers, inviteMember } from '../../api/clients/organizations';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 
 interface Organization {
   id: string
@@ -27,7 +27,7 @@ interface TeamMember {
 }
 
 const OrganizationsPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, activeOrgId } = useAuthStore();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

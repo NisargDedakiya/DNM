@@ -1,233 +1,334 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, Badge, Button } from '../../components/ui/components';
-import { motion, AnimatePresence } from 'framer-motion';
-import useAuthStore from '../../stores/authStore';
-import useRealtimeStore from '../../store/useRealtimeStore';
-import AddBugcrowdModal from '../../components/AddBugcrowdModal';
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Card,
+  Badge,
+  Button,
+  TelemetryCard,
+  StatusIndicator,
+  CyberPanel,
+  PanelLabel,
+} from '../../components/ui/components'
+import { ThreatLevelBar, AttackPathCard, AIInsightPanel } from '../../components/widgets/ThreatWidgets'
+import LiveEventFeed from '../../components/widgets/LiveEventFeed'
+import useAuthStore from '../../state/auth'
+import useRealtimeStore from '../../realtime/realtimeStore'
+import useFindingsStore from '../../state/findings'
+import useCampaignsStore from '../../state/campaigns'
+import useInvestigationsStore from '../../state/investigations'
+import AddBugcrowdModal from '../../components/AddBugcrowdModal'
 // @ts-ignore
-import ExposureTimelineView from '../../timeline/ExposureTimelineView';
+import ExposureTimelineView from '../../timeline/ExposureTimelineView'
 // @ts-ignore
-import SystemHealthDashboard from '../../monitoring/SystemHealthDashboard';
+import SystemHealthDashboard from '../../monitoring/SystemHealthDashboard'
 // @ts-ignore
-import PerformanceDashboard from '../../performance/PerformanceDashboard';
+import PerformanceDashboard from '../../performance/PerformanceDashboard'
+
+// Mock insights
+const MOCK_INSIGHTS = [
+  {
+    id: 'ins-1',
+    title: 'SSO Trust Path Simulation Vulnerability',
+    body: 'Anomalous OIDC tokens detected on dev-internal.target.com. Active trust chain traversal could allow lateral privilege escalation.',
+    confidence: 94,
+    urgency: 'critical' as const,
+    category: 'attack-path' as const,
+    timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'ins-2',
+    title: 'Exposed Port/Service Drift Alert',
+    body: 'Recon agents observed new listening ports 8083, 9000 on edge targets. Recommend immediate firewall boundary checks.',
+    confidence: 85,
+    urgency: 'high' as const,
+    category: 'recon' as const,
+    timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'ins-3',
+    title: 'Remediation Playbook Generation',
+    body: 'AI generated remediation playbook for OIDC Session Boundary Bypass. Estimated patching complexity: Low.',
+    confidence: 89,
+    urgency: 'medium' as const,
+    category: 'remediation' as const,
+    timestamp: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
+  },
+]
+
+// Mock attack paths
+const MOCK_ATTACK_PATHS = [
+  {
+    title: 'External OIDC Identity Compromise Path',
+    severity: 'critical' as const,
+    affectedTargets: 4,
+    discoveredAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    nodes: [
+      { id: 'node-1', label: 'OAuth Public API', type: 'entry' as const },
+      { id: 'node-2', label: 'Cognito Token Bypass', type: 'lateral' as const },
+      { id: 'node-3', label: 'IAM Pivot Role', type: 'pivot' as const },
+      { id: 'node-4', label: 'Financial DB S3 Bucket', type: 'target' as const },
+    ],
+  },
+  {
+    title: 'SSL VPN Gateway Path to Internal Subnet',
+    severity: 'high' as const,
+    affectedTargets: 12,
+    discoveredAt: new Date(Date.now() - 180 * 60 * 1000).toISOString(),
+    nodes: [
+      { id: 'node-5', label: 'VPN Gateway CVE', type: 'entry' as const },
+      { id: 'node-6', label: 'AD Domain Controller', type: 'lateral' as const },
+      { id: 'node-7', label: 'Corporate Mail Exchange', type: 'target' as const },
+    ],
+  },
+]
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const organizationId = useAuthStore((state) => state.user?.organization_id || '');
-  const [showBugcrowdModal, setShowBugcrowdModal] = useState(false);
+  const navigate = useNavigate()
+  const organizationId = useAuthStore((state) => state.activeOrgId || '')
+  const [showBugcrowdModal, setShowBugcrowdModal] = useState(false)
 
-  // Realtime stores
-  const isConnected = useRealtimeStore((state) => state.isConnected);
-  const activeAlerts = useRealtimeStore((state) => state.activeAlerts);
-  const recentEvents = useRealtimeStore((state) => state.recentEvents);
-  
-  // Local state to keep track of toast alerts
-  const [activeToast, setActiveToast] = useState<any | null>(null);
+  // Realtime events
+  const isConnected = useRealtimeStore((state) => state.isConnected)
+  const activeAlerts = useRealtimeStore((state) => state.activeAlerts)
+  const recentEvents = useRealtimeStore((state) => state.recentEvents)
 
-  // Trigger floating toast when a new active alert arrives
-  useEffect(() => {
-    if (activeAlerts && activeAlerts.length > 0) {
-      const latest = activeAlerts[0];
-      setActiveToast(latest);
-      const timer = setTimeout(() => {
-        setActiveToast(null);
-      }, 5000); // clear after 5s
-      return () => clearTimeout(timer);
-    }
-  }, [activeAlerts]);
+  // Subscribed states
+  const findings = useFindingsStore((state) => state.findings)
+  const campaigns = useCampaignsStore((state) => state.campaigns)
+  const investigations = useInvestigationsStore((state) => state.investigations)
 
-  // Simulated initial metrics
-  const statsSummary = {
-    scannedTargets: 1420,
-    criticalFindings: 12,
-    activeHunts: 3,
-    integrityRate: '99.8%'
-  };
+  // Derive counts with fallbacks
+  const findingsCount = findings.length > 0 ? findings.length : 12
+  const criticalFindingsCount = findings.filter(f => f.severity === 'critical').length || 4
+  const highFindingsCount = findings.filter(f => f.severity === 'high').length || 6
 
-  // Mock campaigns list for offensive dashboard controls
-  const playbooks = [
-    { name: 'External Port Penetration Sim', status: 'idle', count: 120 },
-    { name: 'OIDC Session Boundary Scan', status: 'running', count: 85 },
-    { name: 'SSO Trust Path Simulation', status: 'pending', count: 42 },
-  ];
+  const activeHuntsCount = campaigns.filter(c => c.status === 'active').length || 3
+  const totalCampaignsCount = campaigns.length || 8
+  const activeInvestigationsCount = investigations.filter(i => i.status === 'active').length || 2
+
+  // Derive DEFCON Level based on critical alerts and findings
+  const defconLevel = activeAlerts.length > 0 
+    ? 1 
+    : criticalFindingsCount > 3 
+    ? 2 
+    : highFindingsCount > 0 
+    ? 3 
+    : 4
 
   return (
     <div className="space-y-6">
-      {/* Realtime Floating Critical Alert Toast */}
-      <AnimatePresence>
-        {activeToast && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-6 right-6 z-50 w-96 p-4 rounded-xl border border-red-500 bg-[#0F0813]/95 shadow-[0_0_25px_rgba(239,68,68,0.4)] animate-border-pulse"
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
-                <span className="text-xs uppercase font-mono tracking-[0.24em] text-red-400 font-bold">
-                  CRITICAL INCIDENT DETECTED
-                </span>
-              </div>
-              <button onClick={() => setActiveToast(null)} className="text-gray-400 hover:text-white">
-                ✕
-              </button>
-            </div>
-            <p className="mt-3 text-sm text-white font-semibold font-mono">
-              {activeToast.title || activeToast.description || 'Intruder threat indicator observed.'}
-            </p>
-            {activeToast.correlation_id && (
-              <p className="text-[10px] text-gray-500 font-mono mt-2">
-                Trace ID: {activeToast.correlation_id}
-              </p>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Main Header Row */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex items-center space-x-3 mb-1">
-            <h1 className="text-3xl font-bold tracking-wider text-white">🛡 Cyber Intelligence Command Center</h1>
-            <Badge variant={isConnected ? 'primary' : 'outline'} className="animate-pulse">
-              {isConnected ? 'LIVE TELEMETRY' : 'CONNECTING EVENT BUS...'}
+      {/* ── ROW 1: Operational Status Bar (Full Width) ── */}
+      <CyberPanel className="p-4" scanLine>
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-display font-bold text-white tracking-wider">🛡 CYBER OPERATIONS COMMAND</h1>
+            <Badge variant={isConnected ? 'nominal' : 'primary'} className="font-mono text-[9px] tracking-widest px-2 py-0.5">
+              {isConnected ? 'STREAM SYNCED' : 'BUS OFFLINE'}
             </Badge>
           </div>
-          <p className="text-gray-400 text-sm">
-            NisargHunter AI Distributed Realtime Operations Console. Monitoring active attack vectors, scopes, and campaigns.
-          </p>
-        </div>
-        <div className="flex items-center space-x-2 text-xs font-mono bg-white/[0.02] border border-white/10 rounded-lg p-2">
-          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-yellow-500'} animate-ping`}></span>
-          <span>Websocket: {isConnected ? 'Synchronized' : 'Reconnecting'}</span>
-        </div>
-      </div>
-
-      {/* High-Density Stats Bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-white/5 bg-slate-950/70 p-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-cyan-400 opacity-20 text-4xl">🕸</div>
-          <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-400">Scanned Targets</div>
-          <div className="mt-2 text-3xl font-bold text-white glow-primary">{statsSummary.scannedTargets}</div>
-          <div className="text-[9px] text-gray-500 font-mono mt-1">active assets mapped</div>
-        </div>
-        <div className="rounded-xl border border-white/5 bg-slate-950/70 p-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-red-500 opacity-20 text-4xl">⚡</div>
-          <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-400">Active Vulnerabilities</div>
-          <div className="mt-2 text-3xl font-bold text-red-400">{statsSummary.criticalFindings}</div>
-          <div className="text-[9px] text-gray-500 font-mono mt-1">critical/high severity</div>
-        </div>
-        <div className="rounded-xl border border-white/5 bg-slate-950/70 p-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-orange-400 opacity-20 text-4xl">🎯</div>
-          <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-400">Hunt Campaigns</div>
-          <div className="mt-2 text-3xl font-bold text-orange-400">{statsSummary.activeHunts}</div>
-          <div className="text-[9px] text-gray-500 font-mono mt-1">AI-driven search rooms</div>
-        </div>
-        <div className="rounded-xl border border-white/5 bg-slate-950/70 p-4 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-purple-400 opacity-20 text-4xl">🔄</div>
-          <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-400">Event Bus Integrity</div>
-          <div className="mt-2 text-3xl font-bold text-purple-400">{statsSummary.integrityRate}</div>
-          <div className="text-[9px] text-gray-500 font-mono mt-1">delivery delivery success</div>
-        </div>
-      </div>
-
-      {/* Grid: Live Telemetry & Offensive Playbooks */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        {/* Telemetry Stream Console */}
-        <Card className="xl:col-span-2 flex flex-col p-4 bg-[#070912] border-white/10 rounded-2xl h-[380px] overflow-hidden">
-          <div className="flex items-center justify-between border-b border-white/5 pb-2 mb-3">
-            <h3 className="text-xs uppercase font-mono tracking-widest text-cyan-400 flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-              </span>
-              REALTIME EVENT BUS TELEMETRY FEED
-            </h3>
-            <span className="text-[10px] font-mono text-gray-500">Ctrl + K / Cmd + K for Command Palette</span>
+          <div className="flex items-center gap-6 w-full lg:w-auto justify-between lg:justify-end">
+            <ThreatLevelBar level={defconLevel as any} criticalCount={activeAlerts.length} highCount={highFindingsCount} />
+            <StatusIndicator status={isConnected ? 'live' : 'connecting'} label={isConnected ? 'WEBSOCKET ACTIVE' : 'RECONNECTING'} />
           </div>
+        </div>
+      </CyberPanel>
 
-          {/* Scrolling log console */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-2 bg-black/60 p-3 rounded-lg border border-white/5">
-            {recentEvents.length === 0 ? (
-              <div className="text-gray-600 text-center py-20">
-                &gt; SYSTEM IDLE. WAITING FOR WEBSOCKET PAYLOADS...
-              </div>
+      {/* ── High-Density Telemetry Stats ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <TelemetryCard
+          label="Scanned Targets"
+          value={1420}
+          delta="8.2%"
+          deltaPositive
+          icon={<span>🕸</span>}
+          color="primary"
+          suffix="nodes"
+        />
+        <TelemetryCard
+          label="Active Vulnerabilities"
+          value={findingsCount}
+          delta={`${criticalFindingsCount} critical`}
+          deltaPositive={false}
+          icon={<span>⚡</span>}
+          color={criticalFindingsCount > 0 ? 'critical' : 'high'}
+        />
+        <TelemetryCard
+          label="Hunt Campaigns"
+          value={activeHuntsCount}
+          delta="Active"
+          deltaPositive
+          icon={<span>🎯</span>}
+          color="secondary"
+        />
+        <TelemetryCard
+          label="Monitoring Scans"
+          value={totalCampaignsCount}
+          delta="Configured"
+          deltaPositive
+          icon={<span>📡</span>}
+          color="green"
+        />
+        <TelemetryCard
+          label="Active Investigations"
+          value={activeInvestigationsCount}
+          delta="Under Review"
+          deltaPositive={false}
+          icon={<span>🔍</span>}
+          color="medium"
+        />
+      </div>
+
+      {/* ── ROW 2: Primary Intelligence Grid ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Threat Telemetry Console (66%) */}
+        <CyberPanel
+          title={<PanelLabel dot="primary">REALTIME THREAT TELEMETRY CONSOLE</PanelLabel>}
+          action={
+            <div className="text-[10px] font-mono text-gray-500">
+              Ctrl + K for command palette
+            </div>
+          }
+          className="xl:col-span-2 flex flex-col h-[420px] overflow-hidden"
+        >
+          <div className="flex-1 overflow-hidden p-4">
+            <LiveEventFeed events={recentEvents} maxHeight="340px" />
+          </div>
+        </CyberPanel>
+
+        {/* Active Operations Deck (33%) */}
+        <CyberPanel
+          title={<PanelLabel dot="green">ACTIVE OPERATIONS DECK</PanelLabel>}
+          className="p-5 flex flex-col justify-between"
+        >
+          <div className="space-y-4">
+            {campaigns.length === 0 ? (
+              // Default mock operations if state is empty
+              <>
+                <div className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex justify-between items-center hover:border-white/10 transition-colors">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">External Port Penetration Sim</h4>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
+                      <span>120 nodes checked</span>
+                      <span>•</span>
+                      <span className="text-gray-500 uppercase">Idle</span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] py-0.5">STAGE 1</Badge>
+                </div>
+                <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 flex justify-between items-center hover:border-primary/30 transition-colors">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">OIDC Session Boundary Scan</h4>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-primary/80 font-mono">
+                      <span>85 nodes checked</span>
+                      <span>•</span>
+                      <span className="text-primary uppercase font-bold animate-pulse">Running</span>
+                    </div>
+                  </div>
+                  <Badge variant="primary" className="text-[9px] py-0.5">STAGE 3</Badge>
+                </div>
+                <div className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex justify-between items-center hover:border-white/10 transition-colors">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">SSO Trust Path Simulation</h4>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
+                      <span>42 nodes checked</span>
+                      <span>•</span>
+                      <span className="text-gray-500 uppercase">Pending</span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] py-0.5">STAGE 2</Badge>
+                </div>
+              </>
             ) : (
-              recentEvents.map((evt: any, idx: number) => (
-                <div key={idx} className="flex flex-col border-b border-white/[0.03] pb-1">
-                  <div className="flex justify-between items-start text-slate-400">
-                    <span className="text-[#9D4DFF] font-semibold">&gt; {evt.type || evt.event || 'EVENT'}</span>
-                    <span>{evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString()}</span>
+              campaigns.slice(0, 3).map((campaign) => (
+                <div
+                  key={campaign.id}
+                  className={`p-3 rounded-xl border flex justify-between items-center transition-colors ${
+                    campaign.status === 'active'
+                      ? 'border-primary/20 bg-primary/5'
+                      : 'border-white/5 bg-white/[0.02] hover:border-white/10'
+                  }`}
+                >
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">{campaign.name}</h4>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
+                      <span>Target: {campaign.target || 'None'}</span>
+                      <span>•</span>
+                      <span className={campaign.status === 'active' ? 'text-primary font-bold' : 'text-gray-500'}>
+                        {campaign.status.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
-                  {evt.correlation_id && (
-                    <div className="text-[10px] text-cyan-500/80">Trace Ref: {evt.correlation_id}</div>
-                  )}
-                  <div className="text-gray-300 ml-2 mt-0.5 whitespace-pre-wrap max-w-full break-all">
-                    {JSON.stringify(evt.data || evt.payload || evt)}
-                  </div>
+                  <Badge variant={campaign.status === 'active' ? 'primary' : 'outline'} className="text-[9px]">
+                    {campaign.status === 'active' ? 'LIVE' : 'IDLE'}
+                  </Badge>
                 </div>
               ))
             )}
           </div>
-        </Card>
 
-        {/* Offensive Operations Control Deck */}
-        <Card className="p-5">
-          <h3 className="text-md font-semibold text-white mb-4 border-b border-white/5 pb-2">Operations Control Deck</h3>
-          
-          <div className="space-y-4">
-            {playbooks.map((p, idx) => (
-              <div key={idx} className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex justify-between items-center hover:border-white/10 transition-colors">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-200">{p.name}</h4>
-                  <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
-                    <span>{p.count} nodes checked</span>
-                    <span>•</span>
-                    <span className="uppercase text-cyan-400">{p.status}</span>
-                  </div>
-                </div>
-                <Badge variant={p.status === 'running' ? 'primary' : 'outline'} className="text-[10px]">
-                  {p.status === 'running' ? 'Active' : 'Stage'}
-                </Badge>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
-            <Button variant="outline" className="text-xs" onClick={() => navigate('/app/hunts')}>
+          <div className="mt-6 pt-4 border-t border-white/5 grid grid-cols-2 gap-3">
+            <Button variant="outline" className="text-xs" onClick={() => navigate('/app/monitoring')}>
               🎯 Setup Hunt
             </Button>
             <Button variant="primary" className="text-xs" onClick={() => setShowBugcrowdModal(true)}>
               ➕ Add Scope
             </Button>
           </div>
-        </Card>
+        </CyberPanel>
       </div>
 
-      {/* Exposure Timeline & System Observability Panels */}
-      {organizationId && (
-        <div className="grid grid-cols-1 gap-6">
-          
-          <ExposureTimelineView organizationId={organizationId} />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <PerformanceDashboard organizationId={organizationId} />
-            <SystemHealthDashboard organizationId={organizationId} />
+      {/* ── ROW 3: Attack Intelligence ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Attack Path Summary */}
+        <CyberPanel title={<PanelLabel dot="red">CRITICAL ATTACK PATHS</PanelLabel>}>
+          <div className="p-5 space-y-4">
+            {MOCK_ATTACK_PATHS.map((path, idx) => (
+              <AttackPathCard key={idx} {...path} />
+            ))}
           </div>
+        </CyberPanel>
+
+        {/* AI Recommendations */}
+        <CyberPanel title={<PanelLabel dot="yellow">AI INSIGHT ENGINE RECOMMENDATIONS</PanelLabel>}>
+          <div className="p-5">
+            <AIInsightPanel insights={MOCK_INSIGHTS} />
+          </div>
+        </CyberPanel>
+      </div>
+
+      {/* ── ROW 4: Exposure Timeline ── */}
+      {organizationId && (
+        <CyberPanel title={<PanelLabel dot="primary">EXPOSURE DEVELOPMENT TIMELINE</PanelLabel>}>
+          <div className="p-5">
+            <ExposureTimelineView organizationId={organizationId} />
+          </div>
+        </CyberPanel>
+      )}
+
+      {/* ── ROW 5: System Health & Performance ── */}
+      {organizationId && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <CyberPanel title={<PanelLabel dot="primary">PERFORMANCE MONITORING</PanelLabel>}>
+            <div className="p-5">
+              <PerformanceDashboard organizationId={organizationId} />
+            </div>
+          </CyberPanel>
+          <CyberPanel title={<PanelLabel dot="green">SYSTEM INTEGRITY HEALTH</PanelLabel>}>
+            <div className="p-5">
+              <SystemHealthDashboard organizationId={organizationId} />
+            </div>
+          </CyberPanel>
         </div>
       )}
 
-      {/* Add Bugcrowd Scope Modal */}
+      {/* Scope Onboarding Modal */}
       <AddBugcrowdModal
         isOpen={showBugcrowdModal}
         onClose={() => setShowBugcrowdModal(false)}
         onSuccess={() => {
-          window.location.reload();
+          window.location.reload()
         }}
       />
     </div>
-  );
+  )
 }

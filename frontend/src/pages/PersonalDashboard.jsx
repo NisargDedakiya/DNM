@@ -4,16 +4,17 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore } from '../state/auth';
 import huntApi from '../services/huntApi';
-import websocket from '../services/websocket';
+import websocket from '../realtime/websocketManager'; // Point to new manager
 import WorkingStatus from '../components/WorkingStatus';
 import VulnerabilitySection from '../components/VulnerabilitySection';
 import ManualCheck from '../components/ManualCheck';
 import ReportGeneration from '../components/ReportGeneration';
 
 const PersonalDashboard = () => {
-  const { user, organization } = useAuthStore();
+  const { user, activeOrgId } = useAuthStore();
+  const organization = { id: activeOrgId || '' };
   const [activeHunts, setActiveHunts] = useState([]);
   const [criticalFindings, setCriticalFindings] = useState([]);
   const [selectedHunt, setSelectedHunt] = useState(null);
@@ -28,34 +29,10 @@ const PersonalDashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [wsError, setWsError] = useState(null);
 
-  // Initialize WebSocket
+  // Centralized websocket manages connection automatically
   useEffect(() => {
-    if (!user?.token || !organization?.id) return;
-
-    const initWebSocket = async () => {
-      try {
-        await websocket.connect(user.token, organization.id);
-        setConnectionStatus('connected');
-        setWsError(null);
-      } catch (err) {
-        console.error('WebSocket connection failed:', err);
-        setConnectionStatus('disconnected');
-        setWsError(err.message);
-      }
-    };
-
-    initWebSocket();
-
-    // Subscribe to connection status
-    const unsubscribe = websocket.onConnectionStatus((status) => {
-      setConnectionStatus(status.status);
-    });
-
-    return () => {
-      unsubscribe();
-      websocket.disconnect();
-    };
-  }, [user?.token, organization?.id]);
+    setConnectionStatus(websocket.getStatus().isConnected ? 'connected' : 'disconnected');
+  }, [websocket.getStatus().isConnected]);
 
   // Load dashboard data
   useEffect(() => {

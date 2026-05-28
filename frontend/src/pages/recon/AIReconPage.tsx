@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, Badge, Button } from '../../components/ui/components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateReconPlan, previewWorkflow, getRecommendations } from '../../api/clients/recon';
-import useAuthStore from '../../stores/authStore';
+import useAuthStore from '../../state/auth';
 
 type TabId = 'plan' | 'workflow' | 'recommendations';
 
@@ -21,8 +21,8 @@ const priorityColor: Record<string, string> = {
 };
 
 const AIReconPage: React.FC = () => {
-  const { user } = useAuthStore();
-  const orgId = user?.organization_id ?? 'demo-org';
+  const { activeOrgId } = useAuthStore();
+  const orgId = activeOrgId ?? 'demo-org';
 
   const [activeTab, setActiveTab] = useState<TabId>('plan');
   const [loading, setLoading] = useState(false);

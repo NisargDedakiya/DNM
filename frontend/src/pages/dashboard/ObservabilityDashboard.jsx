@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Badge, Button, Spinner } from '../../components/ui/components';
-import { useAuthStore } from '../../stores/authStore';
+import { useAuthStore } from '../../state/auth';
 import huntApi from '../../services/huntApi';
 
 export const ObservabilityDashboard = () => {
-  const { organization } = useAuthStore();
+  const { activeOrgId } = useAuthStore();
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!organization?.id) return;
+    if (!activeOrgId) return;
     
     const fetchMetrics = async () => {
       try {
-        // Simulated or actual api hit to retrieve metrics payload
-        const res = await fetch(`/api/observability/metrics?org_id=${organization.id}`, {
+        const res = await fetch(`/api/observability/metrics?org_id=${activeOrgId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
           }

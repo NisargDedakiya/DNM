@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getState as getAuthState } from '../stores/authStore'
+import { getState as getAuthState } from '../state/auth'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -23,7 +23,13 @@ const processQueue = (err: any, token: string | null = null) => {
 api.interceptors.request.use((config) => {
   const store = getAuthState()
   const token = store.accessToken
-  if (token && config.headers) config.headers['Authorization'] = `Bearer ${token}`
+  if (token && config.headers) {
+    config.headers['Authorization'] = `Bearer ${token}`
+  }
+  const orgId = store.activeOrgId
+  if (orgId && config.headers) {
+    config.headers['X-Organization-Id'] = orgId
+  }
   return config
 })
 

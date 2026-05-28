@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ingestBugcrowdEngagement, BugcrowdAsset } from '../api/clients/bugcrowd'
 import { Button, Spinner, Badge } from './ui/components'
-import useAuthStore from '../stores/authStore'
+import useAuthStore from '../state/auth'
 
 interface AddBugcrowdModalProps {
   isOpen: boolean
@@ -25,7 +25,7 @@ export const AddBugcrowdModal: React.FC<AddBugcrowdModalProps> = ({ isOpen, onCl
     bounty_ranges?: Record<string, string>
   } | null>(null)
 
-  const organizationId = useAuthStore((state) => state.user?.organization_id || '')
+  const organizationId = useAuthStore((state) => state.activeOrgId || '')
 
   const handleFetchScope = async () => {
     setLoading(true)
