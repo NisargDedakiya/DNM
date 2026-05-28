@@ -73,3 +73,17 @@ async def ai_report(
         items.append(ReportItem(finding_id=r.finding_id, report_id=r.id, content=r.content))
 
     return ReportResponse(reports=items)
+
+
+@router.post("/strategy-plan")
+async def generate_strategy_plan(
+    org_id: str,
+    program_name: str,
+    tech_stack: str,
+    endpoints: List[str],
+    current_user: User = Depends(get_current_user)
+):
+    from backend.ai.core.ai_strategy_planner import ai_strategy_planner
+    plan = await ai_strategy_planner.generate_hunt_plan(org_id, program_name, tech_stack, endpoints)
+    return plan
+

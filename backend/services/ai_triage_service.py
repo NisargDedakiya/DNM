@@ -83,10 +83,22 @@ class AITriageService:
                 f'Raw scanner output: {chunk}'
             )
             try:
-                result = await claude.analyze_json(prompt, TRIAGE_SYSTEM)
+                from backend.ai.core.ai_orchestrator import ai_orchestrator
+                from backend.ai.prompts.system_prompts import SystemPrompts
+                
+                # Executing structured triage classification via centralized AI orchestrator
+                # Centralized route automatically runs token budgeting checks
+                result = await ai_orchestrator.generate_json(
+                    prompt=prompt,
+                    schema={},
+                    system_prompt=TRIAGE_SYSTEM,
+                    org_id=str(organization_id)
+                )
                 if isinstance(result, list):
                     raw_findings.extend(result)
-            except ClaudeAPIError as e:
+                elif isinstance(result, dict) and "status" not in result:
+                    raw_findings.append(result)
+            except Exception as e:
                 logger.error(f'Triage chunk failed: {e}')
 
         saved = []
@@ -201,7 +213,14 @@ class AITriageService:
             for f in findings
         ]
         try:
-            chains = await claude.analyze_json(json.dumps(summary), CHAIN_SYS)
+            from backend.ai.core.ai_orchestrator import ai_orchestrator
+            
+            chains = await ai_orchestrator.generate_json(
+                prompt=json.dumps(summary),
+                schema={},
+                system_prompt=CHAIN_SYS,
+                org_id="system"
+            )
             return chains if isinstance(chains, list) else []
         except Exception as e:
             logger.error(f'Chain detection failed: {e}')

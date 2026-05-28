@@ -24,6 +24,8 @@ from backend.api.routes import monitoring as monitoring_routes
 from backend.api.routes import grid as grid_routes
 from backend.api.routes import performance as performance_routes
 from backend.api.routes import sensei as sensei_routes
+from backend.api.routes import ai as ai_routes
+from backend.api.routes import scheduler as scheduler_routes
 
 from backend.api.routes import sso as sso_routes
 from backend.api.routes import exposure as exposure_routes
@@ -73,9 +75,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from backend.workers.scheduler import execute_monitoring_scheduler
+    from backend.recovery.disaster_recovery import cleanup_orphan_jobs
+    import asyncio
+
+    async def execute_orphan_cleanup():
+        from backend.database.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            try:
+                count = await cleanup_orphan_jobs(db)
+                if count > 0:
+                    logger.info(f"Orphan job cleanup daemon recovered {count} stuck tasks.")
+            except Exception as e:
+                logger.error(f"Error in periodic orphan job cleanup: {e}")
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(execute_monitoring_scheduler, 'interval', minutes=5, id='monitoring')
+    scheduler.add_job(execute_orphan_cleanup, 'interval', minutes=1, id='orphan_cleanup')
     scheduler.start()
+    
+    # Run immediate cleanup once in background on startup
+    asyncio.create_task(execute_orphan_cleanup())
 
     yield
 
@@ -125,6 +144,28 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Secure CSP middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            response = await call_next(request)
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "connect-src 'self' ws: wss:;"
+            )
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
     api_router = APIRouter(prefix="/api")
@@ -138,6 +179,8 @@ def create_app() -> FastAPI:
     api_router.include_router(grid_routes.router)
     api_router.include_router(performance_routes.router)
     api_router.include_router(sensei_routes.router)
+    api_router.include_router(ai_routes.router)
+    api_router.include_router(scheduler_routes.router)
 
     api_router.include_router(sso_routes.router)
     api_router.include_router(exposure_routes.router)
@@ -167,8 +210,9 @@ def create_app() -> FastAPI:
     api_router.include_router(marketplace_routes.router)
     api_router.include_router(public_rest_api.router)
     api_router.include_router(public_graphql_api.router)
-    api_router.include_router(web_routes.router)
-    
+    from backend.api.routes import observability_dashboard as observability_routes
+    api_router.include_router(observability_routes.router)
+    app.include_router(health.router)
     app.include_router(api_router)
 
     return app

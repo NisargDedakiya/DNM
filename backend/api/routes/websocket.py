@@ -49,8 +49,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None, 
         return
 
     # Register connection
-    await manager.manager.connect(user_id, websocket)
-    logger.info("Websocket connected for user %s", user_id)
+    org_id = websocket.query_params.get("org") or "system"
+    await manager.manager.connect(websocket, str(org_id), str(user_id))
+    logger.info("Websocket connected for user %s inside org %s", user_id, org_id)
 
     try:
         # Keep connection open and react to incoming messages if needed
@@ -61,8 +62,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None, 
             except WebSocketDisconnect:
                 break
     finally:
-        await manager.manager.disconnect(user_id, websocket)
-        logger.info("Websocket disconnected for user %s", user_id)
+        await manager.manager.disconnect(websocket, str(org_id), str(user_id))
+        logger.info("Websocket disconnected for user %s inside org %s", user_id, org_id)
 
 
 @router.websocket("/ws/{scan_id}")

@@ -99,13 +99,21 @@ class AttackService:
 
         ai_verdict = "Pending AI analysis"
         try:
-            ai_verdict = await ai_service.analyze_finding(
-                {
-                    "title": f"Attack path analysis for {source_asset.hostname}",
-                    "target": source_asset.hostname,
-                    "severity": blast_radius["severity"],
-                    "prompt": "Summarize exploitability propagation, blast radius, privilege escalation, and lateral movement.",
-                }
+            from backend.ai.core.ai_orchestrator import ai_orchestrator
+            from backend.ai.prompts.system_prompts import SystemPrompts
+            
+            # Incorporate advanced multi-step privilege propagation guidelines
+            prompt_content = (
+                f"Source: {source_asset.hostname}. Severity: {blast_radius['severity']}. "
+                f"Paths: {json.dumps(correlated)}. Privilege escalated info: {json.dumps(privilege)}. "
+                f"Simulate trust boundary violation & attack path propagation."
+            )
+            
+            ai_verdict = await ai_orchestrator.generate_response(
+                prompt=prompt_content,
+                system_prompt=SystemPrompts.ATTACK_GRAPH,
+                task_type="triage",
+                org_id=str(organization_id)
             )
         except Exception as exc:  # pragma: no cover
             logger.warning("AI reasoning unavailable for attack analysis: %s", exc)

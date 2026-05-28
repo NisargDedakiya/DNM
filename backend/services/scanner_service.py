@@ -165,7 +165,7 @@ class ScannerService:
         """
         scope_json = scope_json or {}
 
-        valid, invalid = ScopeValidator.filter_valid(targets, scope_json)
+        valid, invalid = ScopeValidator.filter_valid(targets, scope_json, program_id=program_id)
         if invalid:
             logger.warning(
                 "%d targets out of scope and skipped (scan %s)", len(invalid), scan_id
@@ -227,7 +227,7 @@ class ScannerService:
         """
         scope_json = scope_json or {}
 
-        valid, _ = ScopeValidator.filter_valid(urls, scope_json)
+        valid, _ = ScopeValidator.filter_valid(urls, scope_json, program_id=program_id)
         if not valid:
             logger.info("No in-scope URLs for dalfox on scan %s", scan_id)
             return []
@@ -276,7 +276,7 @@ class ScannerService:
         """
         scope_json = scope_json or {}
 
-        ScopeValidator.validate_or_raise(url, scope_json)
+        ScopeValidator.validate_or_raise(url, scope_json, program_id=program_id)
 
         approved = await ApprovalGate.request(
             scan_id,

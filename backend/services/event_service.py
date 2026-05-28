@@ -1,41 +1,54 @@
 import logging
 from typing import Dict, Any, Optional
-from backend.core.events import EventType, BaseEvent
-from backend.core.redis_streams import redis_streams
+from backend.events.event_schema import EventType, BaseEvent, EventMetadata
+from backend.events.redis_event_bus import redis_event_bus
+from backend.events.correlation_manager import CorrelationManager
+from backend.events.websocket_contracts import WebSocketContracts
 from backend.websocket.publisher import ws_publisher
 
 logger = logging.getLogger(__name__)
 
 class EventService:
-    """Centralized event orchestration and publishing."""
+    """Centralized event orchestration and publishing using the event system upgrade."""
     
     STREAM_NAME = "nisarghunter_events"
 
     async def emit_event(self, event_type: EventType, org_id: str, payload: Dict[str, Any], user_id: Optional[str] = None):
         """Core method to wrap and publish an event to Redis and Websockets."""
+        correlation_id = CorrelationManager.get_correlation_id()
+        span_id = CorrelationManager.get_span_id()
+        parent_span_id = CorrelationManager.get_parent_span_id()
+
+        metadata = EventMetadata(
+            version="v1",
+            correlation_id=correlation_id,
+            span_id=span_id,
+            parent_span_id=parent_span_id
+        )
+
         event = BaseEvent(
             event_type=event_type,
             org_id=org_id,
             user_id=user_id,
+            metadata=metadata,
             payload=payload
         )
         
-        event_dict = event.model_dump()
-        event_dict["timestamp"] = event.timestamp.isoformat()
-        
-        # 1. Publish to Redis Stream (for worker consumption, auditing)
+        # 1. Publish to Redis Stream
         try:
-            await redis_streams.publish_event(self.STREAM_NAME, event_dict)
+            await redis_event_bus.publish_event(self.STREAM_NAME, event)
         except Exception as e:
             logger.error(f"Failed to publish event to Redis stream: {e}")
             
-        # 2. Immediately push to active websocket clients for real-time UI
+        # 2. Push to websocket clients using normalized WebSocketContracts
         try:
-            await ws_publisher.process_redis_event(event_type, org_id, payload)
+            ws_payload = WebSocketContracts.normalize_payload(event)
+            # Route through websocket publisher
+            await ws_publisher.process_redis_event(event_type, org_id, ws_payload["data"])
         except Exception as e:
             logger.error(f"Failed to publish websocket event: {e}")
         
-        logger.info(f"Emitted event {event_type} for org {org_id}")
+        logger.info(f"Emitted event {event_type} for org {org_id} (correlation_id: {correlation_id})")
 
     async def emit_scan_event(self, org_id: str, scan_id: str, target: str, status: str, progress: int = 0, metadata: dict = None):
         if status == "starting":
@@ -61,3 +74,4 @@ class EventService:
         await self.emit_event(EventType.FINDING_P1_ALERT, org_id, payload)
 
 event_service = EventService()
+

@@ -36,14 +36,14 @@ spec:
               value: "true"
           resources:
             requests:
-              cpu: 300m
-              memory: 384Mi
+              cpu: 500m
+              memory: 512Mi
             limits:
-              cpu: 1500m
-              memory: 1Gi
+              cpu: 2000m
+              memory: 2Gi
           readinessProbe:
             exec:
-              command: ["sh", "-c", "exit 0"]
+              command: ["sh", "-c", "pgrep -f 'job_manager' || pgrep -f 'python'"]
             initialDelaySeconds: 10
             periodSeconds: 20
           lifecycle:

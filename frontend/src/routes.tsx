@@ -13,6 +13,11 @@ import ReportsPage from './pages/reports/ReportsPage';
 import MainLayout from './components/layout/MainLayout';
 import useAuthStore from './stores/authStore';
 import ExposureGridView from './grid/ExposureGridView';
+import HuntsPage from './pages/dashboard/HuntsPage';
+import ObservabilityDashboard from './pages/dashboard/ObservabilityDashboard';
+import AttackGraphPage from './pages/graph/AttackGraphPage';
+import FindingsWorkspacePage from './pages/findings/FindingsWorkspacePage';
+import SchedulerPage from './pages/scheduler/SchedulerPage';
 
 // 4 New Core Screens
 import { WorkingStatusPage } from './pages/scans/WorkingStatusPage';
@@ -45,13 +50,20 @@ const AppRoutes: React.FC = () => {
       }>
         <Route index element={<Dashboard />} />
         <Route path="ai-copilot" element={<CopilotPage />} />
+        <Route path="chat" element={<CopilotPage />} />
         <Route path="sensei-ai" element={<SenseiAIPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="manual-guide" element={<GuidePage />} />
+        <Route path="observability" element={<ObservabilityDashboard />} />
+        <Route path="hunts" element={<HuntsPage />} />
+        <Route path="graph" element={<AttackGraphPage />} />
+        <Route path="findings" element={<FindingsWorkspacePage />} />
+        <Route path="scheduler" element={<SchedulerPage />} />
         <Route path="bugcrowd" element={<BugcrowdPage />} />
         <Route path="hackerone" element={<HackerOnePage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="exposure-grid" element={<ExposureGridView />} />
+
         
         {/* New 4 Core Routes */}
         <Route path="scans/:scanId/status" element={<WorkingStatusPage />} />

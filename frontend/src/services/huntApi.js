@@ -4,7 +4,7 @@
  * Handles JWT auth, error handling, and request coordination
  */
 
-import api from '../client';
+import api from '../api/client';
 
 export const huntApi = {
   /**

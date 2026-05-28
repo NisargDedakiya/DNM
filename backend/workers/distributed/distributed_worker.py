@@ -62,7 +62,58 @@ class DistributedWorker:
             except Exception as exc:
                 failures += 1
                 logger.exception("Distributed worker failed job %s: %s", job.get("job_id"), exc)
-                await event_service.emit_event(EventType.CLUSTER_JOB_FAILED, organization_id, {"job_id": job.get("job_id"), "error": str(exc)})
+                
+                try:
+                    from uuid import UUID
+                    import json
+                    import time
+                    from backend.models.cluster_job import ClusterJob
+                    
+                    cluster_job = await self.db.get(ClusterJob, UUID(job["job_id"]))
+                    if cluster_job:
+                        cluster_job.attempts = int(cluster_job.attempts or 0) + 1
+                        
+                        MAX_RETRIES = 3
+                        if cluster_job.attempts < MAX_RETRIES:
+                            cluster_job.status = "queued"
+                            await self.db.flush()
+                            await self.queue.retry(organization_id, str(cluster_job.id), priority=cluster_job.priority)
+                            logger.warning(f"Retrying job {cluster_job.id} (attempt {cluster_job.attempts}/{MAX_RETRIES})")
+                            await event_service.emit_event(
+                                EventType.CLUSTER_JOB_STARTED, 
+                                organization_id, 
+                                {"job_id": str(cluster_job.id), "status": "retry", "attempt": cluster_job.attempts}
+                            )
+                        else:
+                            cluster_job.status = "failed"
+                            cluster_job.failure_reason = str(exc)
+                            await self.db.flush()
+                            
+                            # Push to DLQ list in Redis
+                            redis_client = await get_redis()
+                            dlq_payload = {
+                                "job_id": str(cluster_job.id),
+                                "organization_id": organization_id,
+                                "task_type": cluster_job.task_type,
+                                "payload": cluster_job.payload or {},
+                                "error": str(exc),
+                                "failed_at": time.time(),
+                                "attempts": cluster_job.attempts
+                            }
+                            await redis_client.lpush("cluster_jobs:dlq", json.dumps(dlq_payload))
+                            logger.error(f"Job {cluster_job.id} failed after {MAX_RETRIES} attempts. Routed to DLQ.")
+                            
+                            await event_service.emit_event(
+                                EventType.CLUSTER_JOB_FAILED, 
+                                organization_id, 
+                                {"job_id": str(cluster_job.id), "error": f"Max retries reached. Routed to DLQ: {str(exc)}"}
+                            )
+                    else:
+                        await event_service.emit_event(EventType.CLUSTER_JOB_FAILED, organization_id, {"job_id": job.get("job_id"), "error": str(exc)})
+                    await self.db.commit()
+                except Exception as inner_exc:
+                    logger.error(f"Failed to execute retry/DLQ orchestration for job {job.get('job_id')}: {inner_exc}")
+                    await event_service.emit_event(EventType.CLUSTER_JOB_FAILED, organization_id, {"job_id": job.get("job_id"), "error": f"{str(exc)} (DLQ failure: {inner_exc})"})
 
         return {"processed": processed, "failures": failures}
 
@@ -81,28 +132,43 @@ class DistributedWorker:
 
         payload = job.get("payload", {})
         targets = payload.get("targets") or ([payload.get("target")] if payload.get("target") else [])
-        validated = await validate_pipeline_targets(
-            [target for target in targets if target],
-            scopes=scopes,
-            user_id=str(payload.get("user_id") or payload.get("created_by_id") or "system"),
-            program_id=str(payload.get("program_id") or "") or None,
-            allowlist=payload.get("allowlist"),
-            rate_limit=payload.get("rate_limit"),
-            concurrency_limit=payload.get("concurrency_limit"),
-        ) if targets else []
+        
+        # Acquire distributed lock on target to prevent concurrent redundant scans
+        from backend.core.redis_lock import RedisLock
+        target_name = targets[0] if targets else "generic"
+        lock_key = f"scan:{organization_id}:{target_name}"
+        
+        lock = RedisLock(lock_key, ttl_seconds=600)
+        acquired = await lock.acquire(blocking=True, timeout=5.0)
+        if not acquired:
+            logger.warning(f"Lock already held for scan target: {target_name}. Job rescheduled.")
+            raise RuntimeError(f"Scan target {target_name} is currently locked by another worker process.")
+        
+        try:
+            validated = await validate_pipeline_targets(
+                [target for target in targets if target],
+                scopes=scopes,
+                user_id=str(payload.get("user_id") or payload.get("created_by_id") or "system"),
+                program_id=str(payload.get("program_id") or "") or None,
+                allowlist=payload.get("allowlist"),
+                rate_limit=payload.get("rate_limit"),
+                concurrency_limit=payload.get("concurrency_limit"),
+            ) if targets else []
 
-        if validated:
-            await event_service.emit_event(EventType.SCAN_PROGRESS, organization_id, {"job_id": job.get("job_id"), "validated_targets": len(validated)})
+            if validated:
+                await event_service.emit_event(EventType.SCAN_PROGRESS, organization_id, {"job_id": job.get("job_id"), "validated_targets": len(validated)})
 
-        tool = payload.get("tool") or self._default_tool(job.get("task_type", "subfinder"))
-        tool_args = self._build_tool_args(tool, payload, validated)
-        result = await self.executor.execute_tool(tool, tool_args)
+            tool = payload.get("tool") or self._default_tool(job.get("task_type", "subfinder"))
+            tool_args = self._build_tool_args(tool, payload, validated)
+            result = await self.executor.execute_tool(tool, tool_args)
 
-        await self._stream_result_events(organization_id, job, result)
-        await self._publish_findings_and_triage(organization_id, job, result)
-        await self._mark_job(job, organization_id, "completed", meta=result)
-        await event_service.emit_event(EventType.CLUSTER_JOB_COMPLETED, organization_id, {"job_id": job.get("job_id"), "result": result})
-        return result
+            await self._stream_result_events(organization_id, job, result)
+            await self._publish_findings_and_triage(organization_id, job, result)
+            await self._mark_job(job, organization_id, "completed", meta=result)
+            await event_service.emit_event(EventType.CLUSTER_JOB_COMPLETED, organization_id, {"job_id": job.get("job_id"), "result": result})
+            return result
+        finally:
+            await lock.release()
 
     def _is_approved(self, job: dict[str, Any]) -> bool:
         payload = job.get("payload", {})

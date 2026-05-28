@@ -18,10 +18,16 @@ async def connect_redis() -> None:
     Called during application startup.
     """
     global _redis_client
+    # Enable automatic retries on timeouts and health checking
+    retry_policy = redis.Retry(redis.backoff.ExponentialBackoff(cap=5, initial=0.5), 3)
     _redis_client = redis.from_url(
         settings.redis_url,
         encoding="utf8",
         decode_responses=True,
+        retry_on_timeout=True,
+        health_check_interval=30,
+        socket_keepalive=True,
+        retry=retry_policy,
     )
 
 
