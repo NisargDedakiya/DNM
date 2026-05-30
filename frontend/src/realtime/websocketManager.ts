@@ -1,5 +1,6 @@
 import useRealtimeStore from './realtimeStore'
 import { WebSocketMessage } from './eventContracts'
+import ReconnectManager from './reconnectManager'
 
 class WebSocketManager {
   private ws: WebSocket | null = null
@@ -7,21 +8,32 @@ class WebSocketManager {
   private messageHandlers: Map<string, Array<(data: any) => void>> = new Map()
   private isConnecting = false
   private isConnected = false
-  private reconnectAttempts = 0
-  private maxReconnectAttempts = 15
-  private reconnectDelay = 2000
-  private maxReconnectDelay = 30000
   private heartbeatInterval: NodeJS.Timeout | null = null
   private lastHeartbeatAck = Date.now()
   private token: string | null = null
   private orgId: string | null = null
+  private reconnectManager: ReconnectManager
 
-  public connect(token: string, orgId: string) {
+  constructor() {
+    this.reconnectManager = new ReconnectManager()
+    this.reconnectManager.registerReconnect(() => {
+      if (this.token && this.orgId) {
+        this.connect(this.token, this.orgId, true)
+      }
+    })
+  }
+
+  public connect(token: string, orgId: string, isReconnect = false) {
     if (this.token === token && this.orgId === orgId && (this.isConnected || this.isConnecting)) {
       return
     }
 
-    this.disconnect()
+    if (!isReconnect) {
+      // Manual/new connection - reset reconnect attempts
+      this.reconnectManager.reset()
+    }
+
+    this.disconnect(isReconnect)
 
     this.token = token
     this.orgId = orgId
@@ -59,8 +71,7 @@ class WebSocketManager {
   private handleOpen() {
     this.isConnected = true
     this.isConnecting = false
-    this.reconnectAttempts = 0
-    this.reconnectDelay = 2000
+    this.reconnectManager.reset()
     useRealtimeStore.getState().setConnected(true)
     console.log('[WebSocketManager] Connection established')
 
@@ -72,7 +83,7 @@ class WebSocketManager {
     try {
       const data: WebSocketMessage = JSON.parse(event.data)
 
-      if (data.type === 'heartbeat_ack') {
+      if (data.type === 'heartbeat_ack' || data.event_type === 'heartbeat_ack') {
         this.lastHeartbeatAck = Date.now()
         return
       }
@@ -134,20 +145,7 @@ class WebSocketManager {
 
   private scheduleReconnect() {
     if (!this.token || !this.orgId) return
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[WebSocketManager] Max reconnection attempts reached')
-      return
-    }
-
-    this.reconnectAttempts++
-    const delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), this.maxReconnectDelay)
-    console.log(`[WebSocketManager] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
-
-    setTimeout(() => {
-      if (this.token && this.orgId) {
-        this.connect(this.token, this.orgId)
-      }
-    }, delay)
+    this.reconnectManager.scheduleReconnect()
   }
 
   public on(eventType: string, handler: (data: any) => void): () => void {
@@ -190,7 +188,7 @@ class WebSocketManager {
     }
   }
 
-  public disconnect() {
+  public disconnect(keepCredentials = false) {
     this.stopHeartbeat()
     if (this.ws) {
       // Clear handlers temporarily to prevent callbacks during explicit disconnect
@@ -202,8 +200,13 @@ class WebSocketManager {
     }
     this.isConnected = false
     this.isConnecting = false
-    this.token = null
-    this.orgId = null
+    
+    if (!keepCredentials) {
+      this.token = null
+      this.orgId = null
+      this.reconnectManager.reset()
+    }
+    
     useRealtimeStore.getState().setConnected(false)
     console.log('[WebSocketManager] Disconnected')
   }
@@ -212,7 +215,8 @@ class WebSocketManager {
     return {
       isConnected: this.isConnected,
       isConnecting: this.isConnecting,
-      reconnectAttempts: this.reconnectAttempts,
+      reconnectAttempts: this.reconnectManager.getAttempts(),
+      maxReconnectAttempts: this.reconnectManager.getMaxAttempts(),
       url: this.url,
     }
   }

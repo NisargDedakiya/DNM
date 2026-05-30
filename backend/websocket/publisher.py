@@ -29,6 +29,17 @@ class WebsocketPublisher:
         }
         await websocket_manager.send_to_org(org_id, event)
         
+    async def publish_pipeline_event(self, org_id: str, event_type: str, payload: Dict[str, Any]):
+        """Publish an ingestion pipeline stage event to the org's websocket channel."""
+        event = {
+            "type": event_type,
+            "data": {
+                **payload,
+                "timestamp": __import__("time").time(),
+            }
+        }
+        await websocket_manager.send_to_org(org_id, event)
+
     async def process_redis_event(self, event_type: str, org_id: str, payload: Dict[str, Any]):
         """Route Redis events to the correct websocket topic."""
         if event_type in [EventType.SCAN_STARTED, EventType.SCAN_PROGRESS, EventType.SCAN_COMPLETED]:

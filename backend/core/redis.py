@@ -4,12 +4,14 @@ Provides singleton Redis client with async support.
 """
 from typing import Optional
 
-import redis.asyncio as redis
+import redis.asyncio as aioredis
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 from backend.core.config import settings
 
 # Global Redis client instance
-_redis_client: Optional[redis.Redis] = None
+_redis_client: Optional[aioredis.Redis] = None
 
 
 async def connect_redis() -> None:
@@ -19,8 +21,8 @@ async def connect_redis() -> None:
     """
     global _redis_client
     # Enable automatic retries on timeouts and health checking
-    retry_policy = redis.Retry(redis.backoff.ExponentialBackoff(cap=5, initial=0.5), 3)
-    _redis_client = redis.from_url(
+    retry_policy = Retry(ExponentialBackoff(cap=5, base=0.5), 3)
+    _redis_client = aioredis.from_url(
         settings.redis_url,
         encoding="utf8",
         decode_responses=True,
@@ -42,12 +44,12 @@ async def close_redis() -> None:
         _redis_client = None
 
 
-async def get_redis() -> redis.Redis:
+async def get_redis() -> aioredis.Redis:
     """
     Dependency: Get Redis client instance.
 
     Returns:
-        redis.Redis: Active Redis connection
+        aioredis.Redis: Active Redis connection
 
     Raises:
         RuntimeError: If Redis is not initialized

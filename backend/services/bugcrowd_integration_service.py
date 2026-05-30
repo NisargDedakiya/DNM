@@ -1,6 +1,7 @@
 """
 Bugcrowd Integration Service
-Orchestrates scraping, extraction, and ingestion workflow
+Orchestrates scraping, extraction, and ingestion workflow.
+Emits realtime pipeline events at every stage via WebSocket publisher.
 """
 import logging
 from typing import Optional, Dict, List, Any
@@ -17,6 +18,15 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+async def _emit(org_id: str, event_type: str, payload: Dict[str, Any]) -> None:
+    """Best-effort websocket publish — never raises."""
+    try:
+        from backend.websocket.publisher import ws_publisher
+        await ws_publisher.publish_pipeline_event(org_id, event_type, payload)
+    except Exception as exc:
+        logger.debug("[pipeline-emit] %s → %s (suppressed): %s", org_id, event_type, exc)
 
 
 class BugcrowdIngestionResult:
@@ -48,6 +58,7 @@ class BugcrowdIntegrationService:
         self.validator = scope_validator
         self.db = db
         self.scraper_config = BugcrowdScraperConfig()
+        self._org_id: Optional[str] = None  # set during ingest call
     
     async def ingest_bugcrowd_engagement(
         self,
@@ -76,29 +87,64 @@ class BugcrowdIntegrationService:
         """
         result = BugcrowdIngestionResult()
         start_time = datetime.utcnow()
-        
+        self._org_id = organization_id
+
         try:
             logger.info(f"Starting Bugcrowd ingestion for {engagement_url}")
-            
+
+            # ► Stage 1: INGESTION STARTED
+            await _emit(organization_id, "ingestion_started", {
+                "platform": "bugcrowd",
+                "url": engagement_url,
+                "stage": "ingestion_started",
+                "message": "Initiating Bugcrowd engagement ingestion...",
+            })
+
             # Step 1: Fetch engagement page
             logger.debug("Step 1: Fetching engagement page...")
             async with BugcrowdScraper(self.scraper_config) as scraper:
                 html = await scraper.fetch_engagement_page(engagement_url)
-            
+
             if not html:
                 result.errors.append("Failed to fetch engagement page")
+                await _emit(organization_id, "ingestion_error", {
+                    "platform": "bugcrowd",
+                    "stage": "page_fetched",
+                    "error": "Failed to fetch engagement page",
+                })
                 logger.error(f"Could not fetch {engagement_url}")
                 return result
-            
+
+            # ► Stage 2: PAGE FETCHED
+            await _emit(organization_id, "page_fetched", {
+                "platform": "bugcrowd",
+                "url": engagement_url,
+                "stage": "page_fetched",
+                "message": "Engagement page fetched. Parsing HTML structure...",
+                "html_bytes": len(html),
+            })
+
             # Step 2: Parse HTML
             logger.debug("Step 2: Parsing HTML...")
             async with BugcrowdScraper(self.scraper_config) as scraper:
                 parsed_data = scraper.parse_engagement_html(html)
                 scope_sections = scraper.extract_scope_sections(parsed_data)
                 basic_metadata = scraper.extract_program_metadata(parsed_data)
-            
+
             result.program_name = parsed_data.get("program_name", "Unknown Program")
-            
+
+            # ► Stage 3: SCOPE_EXTRACTED (raw HTML parse done)
+            in_scope_count = len(scope_sections.get("in_scope", []))
+            out_scope_count = len(scope_sections.get("out_of_scope", []))
+            await _emit(organization_id, "scope_extracted", {
+                "platform": "bugcrowd",
+                "stage": "scope_extracted",
+                "program_name": result.program_name,
+                "in_scope_raw": in_scope_count,
+                "out_of_scope_raw": out_scope_count,
+                "message": f"Extracted {in_scope_count} raw in-scope targets. Running AI validation...",
+            })
+
             # Step 3: Extract scope with AI
             logger.debug("Step 3: Extracting scope with AI...")
             extractor = ScopeExtractor(self.claude, self.validator)
@@ -107,7 +153,17 @@ class BugcrowdIntegrationService:
                 scope_raw,
                 program_context=f"Program: {result.program_name}"
             )
-            
+
+            # ► Stage 4: AI_VALIDATED
+            validated_count = len(structured_scope.get("in_scope", []))
+            await _emit(organization_id, "ai_validated", {
+                "platform": "bugcrowd",
+                "stage": "ai_validated",
+                "program_name": result.program_name,
+                "validated_targets": validated_count,
+                "message": f"AI validated {validated_count} targets. Normalizing targets...",
+            })
+
             # Step 4: Extract metadata with AI
             logger.debug("Step 4: Extracting metadata with AI...")
             metadata_analyzer = ProgramMetadataAnalyzer(self.claude)
@@ -116,7 +172,16 @@ class BugcrowdIntegrationService:
                 parsed_data.get("program_description"),
                 parsed_data.get("raw_text", "")
             )
-            
+
+            # ► Stage 5: TARGETS NORMALIZED
+            await _emit(organization_id, "targets_normalized", {
+                "platform": "bugcrowd",
+                "stage": "targets_normalized",
+                "program_name": result.program_name,
+                "message": "Targets normalized. Generating attack surface graph...",
+                "categories": metadata_analyzer and getattr(program_metadata, 'asset_categories', []),
+            })
+
             # Step 5: Store program
             logger.debug("Step 5: Storing program...")
             program_id = await self._store_program(
@@ -128,7 +193,16 @@ class BugcrowdIntegrationService:
                 html
             )
             result.program_id = program_id
-            
+
+            # ► Stage 6: GRAPH_GENERATED (target graph built from scope)
+            await _emit(organization_id, "graph_generated", {
+                "platform": "bugcrowd",
+                "stage": "graph_generated",
+                "program_name": result.program_name,
+                "program_id": program_id,
+                "message": "Attack surface graph generated. Activating monitoring campaign...",
+            })
+
             # Step 6: Store assets and link to inventory
             logger.debug("Step 6: Storing assets...")
             result.assets_imported, result.assets_updated = await self._store_assets(
@@ -136,23 +210,60 @@ class BugcrowdIntegrationService:
                 structured_scope,
                 organization_id
             )
-            
+
+            # ► Stage 7: MONITORING_ACTIVE
+            await _emit(organization_id, "monitoring_active", {
+                "platform": "bugcrowd",
+                "stage": "monitoring_active",
+                "program_name": result.program_name,
+                "program_id": program_id,
+                "assets_imported": result.assets_imported,
+                "message": f"Monitoring campaign active for {result.assets_imported} targets. Activating findings pipeline...",
+            })
+
+            # ► Stage 8: FINDINGS_ACTIVE
+            await _emit(organization_id, "findings_active", {
+                "platform": "bugcrowd",
+                "stage": "findings_active",
+                "program_name": result.program_name,
+                "program_id": program_id,
+                "message": "Findings pipeline activated. Attack graph is updating in realtime.",
+            })
+
             # Step 7: Record sync
             duration = (datetime.utcnow() - start_time).total_seconds()
             await self._record_sync_history(program_id, result, duration)
-            
+
             result.success = True
             result.duration_seconds = duration
             logger.info(
                 f"Successfully ingested {result.program_name}: "
                 f"{result.assets_imported} imported, {result.assets_updated} updated"
             )
-        
+
+            # ► Stage 9: INGESTION COMPLETE
+            await _emit(organization_id, "ingestion_complete", {
+                "platform": "bugcrowd",
+                "stage": "ingestion_complete",
+                "program_name": result.program_name,
+                "program_id": program_id,
+                "assets_imported": result.assets_imported,
+                "assets_updated": result.assets_updated,
+                "duration_seconds": duration,
+                "message": f"Ingestion complete: {result.assets_imported} assets imported in {duration:.1f}s.",
+            })
+
         except Exception as e:
             logger.error(f"Error during Bugcrowd ingestion: {str(e)}", exc_info=True)
             result.errors.append(str(e))
             result.duration_seconds = (datetime.utcnow() - start_time).total_seconds()
-        
+            await _emit(organization_id, "ingestion_error", {
+                "platform": "bugcrowd",
+                "stage": "ingestion_error",
+                "error": str(e),
+                "message": f"Ingestion failed: {str(e)}",
+            })
+
         return result
     
     async def _store_program(

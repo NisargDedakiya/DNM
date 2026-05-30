@@ -6,6 +6,7 @@ Responsibilities:
 - normalize and validate imported targets
 - persist organization-scoped sync snapshots
 - provide recon-ready target ingestion payloads
+- emit realtime pipeline events via WebSocket publisher
 """
 from __future__ import annotations
 
@@ -22,6 +23,18 @@ from backend.auth.hackerone import HackerOneClient
 from backend.models.hackerone_program import HackerOneProgram
 from backend.models.hackerone_report import HackerOneReport
 from backend.utils.scope_validator import normalize_target
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+async def _emit(org_id: str, event_type: str, payload: dict) -> None:
+    """Best-effort websocket publish — never raises."""
+    try:
+        from backend.websocket.publisher import ws_publisher
+        await ws_publisher.publish_pipeline_event(org_id, event_type, payload)
+    except Exception as exc:
+        logger.debug("[h1-pipeline-emit] %s → %s (suppressed): %s", org_id, event_type, exc)
 
 
 class HackerOneSyncService:
@@ -38,13 +51,38 @@ class HackerOneSyncService:
         api_token: str,
     ) -> dict[str, Any]:
         """Synchronize accessible HackerOne programs into local storage."""
-        client = HackerOneClient(username=username, api_token=api_token)
-        programs = await client.get_programs()
+        org_id_str = str(organization_id)
+
+        await _emit(org_id_str, "h1_sync_started", {
+            "platform": "hackerone",
+            "stage": "h1_sync_started",
+            "message": "HackerOne sync initiated. Fetching accessible programs...",
+        })
+
+        try:
+            client = HackerOneClient(username=username, api_token=api_token)
+            programs = await client.get_programs()
+        except Exception as exc:
+            await _emit(org_id_str, "h1_sync_error", {
+                "platform": "hackerone",
+                "stage": "h1_sync_error",
+                "error": str(exc),
+                "message": f"HackerOne API error: {exc}",
+            })
+            raise
+
+        await _emit(org_id_str, "h1_programs_fetched", {
+            "platform": "hackerone",
+            "stage": "h1_programs_fetched",
+            "total_programs": len(programs),
+            "message": f"{len(programs)} programs found. Normalizing scopes...",
+        })
 
         created = 0
         updated = 0
         imported: list[dict[str, Any]] = []
         recon_ingestion: list[dict[str, Any]] = []
+        total_recon_targets = 0
 
         for program in programs:
             saved, status = await self.import_hackerone_program(
@@ -72,14 +110,16 @@ class HackerOneSyncService:
                 username=username,
                 api_token=api_token,
             )
+            recon_targets = [
+                t["normalized_target"]
+                for t in scope_result["targets"]
+                if t.get("recon_ready")
+            ]
+            total_recon_targets += len(recon_targets)
             recon_ingestion.append(
                 {
                     "program_handle": saved.handle,
-                    "recon_ready_targets": [
-                        t["normalized_target"]
-                        for t in scope_result["targets"]
-                        if t.get("recon_ready")
-                    ],
+                    "recon_ready_targets": recon_targets,
                     "monitoring_targets": [
                         t["normalized_target"]
                         for t in scope_result["targets"]
@@ -89,6 +129,25 @@ class HackerOneSyncService:
             )
 
         await self.db.commit()
+
+        # ► Emit scope normalized event
+        await _emit(org_id_str, "h1_scope_normalized", {
+            "platform": "hackerone",
+            "stage": "h1_scope_normalized",
+            "total_programs": len(programs),
+            "total_recon_targets": total_recon_targets,
+            "message": f"{total_recon_targets} recon-ready targets normalized across {len(programs)} programs.",
+        })
+
+        await _emit(org_id_str, "h1_sync_complete", {
+            "platform": "hackerone",
+            "stage": "h1_sync_complete",
+            "created": created,
+            "updated": updated,
+            "total": len(programs),
+            "total_recon_targets": total_recon_targets,
+            "message": f"HackerOne sync complete: {created} new, {updated} updated programs.",
+        })
 
         return {
             "status": "ok",
@@ -240,6 +299,7 @@ class HackerOneSyncService:
         api_token: str,
     ) -> dict[str, Any]:
         """Fetch my reports and cache metadata for organization tracking."""
+        org_id_str = str(organization_id)
         client = HackerOneClient(username=username, api_token=api_token)
         reports = await client.get_my_reports()
 
@@ -290,6 +350,17 @@ class HackerOneSyncService:
             created += 1
 
         await self.db.commit()
+
+        # ► Emit reports synced event
+        await _emit(org_id_str, "h1_reports_synced", {
+            "platform": "hackerone",
+            "stage": "h1_reports_synced",
+            "created": created,
+            "updated": updated,
+            "total": len(reports),
+            "message": f"{len(reports)} reports synced ({created} new, {updated} updated).",
+        })
+
         return {
             "status": "ok",
             "created": created,
